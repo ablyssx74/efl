@@ -552,6 +552,8 @@ _ecore_evas_internal_sdl_new(int rmethod, const char* name, int w, int h, int fu
         goto on_error;
      }
 
+   SDL_StartTextInput();
+
    if (!gl)
      {
         swd->r = SDL_CreateRenderer(swd->w, -1, 0);

@@ -129,31 +129,42 @@ _ecore_sdl_event_modifiers(int mod)
 }
 
 static Ecore_Event_Key*
-_ecore_sdl_event_key(SDL_Event *event, double timestamp)
+_ecore_sdl_event_key(SDL_Event *event, double timestamp, const char *text)
 {
    Ecore_Event_Key *ev;
    unsigned int i;
-
-   ev = calloc(1, sizeof(Ecore_Event_Key));
-   if (!ev) return NULL;
-
-   ev->timestamp = timestamp;
-   ev->window = event->key.windowID;
-   ev->event_window = 0;
-   ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
-   ev->key = NULL;
-   ev->compose = NULL;
+   size_t tlen = text ? strlen(text) : 0;
 
    for (i = 0; i < EINA_C_ARRAY_LENGTH(keystable); ++i)
      if (keystable[i].code == event->key.keysym.sym)
        {
+          /* the text (if any) lives right behind the event, so a plain
+           * free() releases both */
+          ev = calloc(1, sizeof(Ecore_Event_Key) + tlen + 1);
+          if (!ev) return NULL;
+
+          ev->timestamp = timestamp;
+          ev->window = event->key.windowID;
+          ev->event_window = event->key.windowID;
+          ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
           ev->keyname = keystable[i].name;
-          ev->string = keystable[i].compose;
+          ev->key = keystable[i].name;
+          ev->compose = NULL;
+          ev->keycode = event->key.keysym.scancode;
+          if (tlen)
+            {
+               char *buf = (char *)(ev + 1);
+
+               memcpy(buf, text, tlen + 1);
+               ev->string = buf;
+            }
+          else if (keystable[i].compose && (strlen(keystable[i].compose) == 1))
+            ev->string = keystable[i].compose;
+          /* else: a non-text key (Shift_L, Up, F1, ...), no string */
 
           return ev;
        }
 
-   free(ev);
    return NULL;
 }
 
@@ -275,11 +286,26 @@ ecore_sdl_feed_events(void)
                                                                     EINA_RBTREE_CMP_KEY_CB(_ecore_sdl_pressed_node), NULL);
              if (entry)
                {
-                  ev = _ecore_sdl_event_key(&event, timestamp);
+                  ev = _ecore_sdl_event_key(&event, timestamp, NULL);
                   if (ev) ecore_event_add(ECORE_EVENT_KEY_UP, ev, NULL, NULL);
                }
 
-             ev = _ecore_sdl_event_key(&event, timestamp);
+             /* SDL sends the text a key produced (shift, layout, ...) as
+              * a SDL_TEXTINPUT event right after the key down. */
+             {
+                SDL_Event next;
+                const char *text = NULL;
+
+                if ((SDL_PeepEvents(&next, 1, SDL_PEEKEVENT,
+                                    SDL_FIRSTEVENT, SDL_LASTEVENT) == 1) &&
+                    (next.type == SDL_TEXTINPUT))
+                  {
+                     SDL_PeepEvents(&next, 1, SDL_GETEVENT,
+                                    SDL_TEXTINPUT, SDL_TEXTINPUT);
+                     text = next.text.text;
+                  }
+                ev = _ecore_sdl_event_key(&event, timestamp, text);
+             }
              if (ev) ecore_event_add(ECORE_EVENT_KEY_DOWN, ev, NULL, NULL);
 
              if (!entry)
@@ -308,7 +334,7 @@ ecore_sdl_feed_events(void)
                   free(entry);
                }
 
-             ev = _ecore_sdl_event_key(&event, timestamp);
+             ev = _ecore_sdl_event_key(&event, timestamp, NULL);
              if (ev) ecore_event_add(ECORE_EVENT_KEY_UP, ev, NULL, NULL);
              break;
           }
