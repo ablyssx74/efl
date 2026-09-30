@@ -370,6 +370,17 @@ _ecore_evas_show(Ecore_Evas *ee)
    evas_event_feed_mouse_in(ee->evas, (unsigned int)((unsigned long long)(ecore_time_get() * 1000.0) & 0xffffffff), NULL);
 }
 
+static void
+_ecore_evas_title_set(Ecore_Evas *ee, const char *title)
+{
+   Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+
+   if (eina_streq(ee->prop.title, title)) return;
+   free(ee->prop.title);
+   ee->prop.title = eina_strdup(title);
+   SDL_SetWindowTitle(swd->w, title ? title : "");
+}
+
 static Ecore_Evas_Engine_Func _ecore_sdl_engine_func =
 {
    _ecore_evas_sdl_free,
@@ -398,7 +409,7 @@ static Ecore_Evas_Engine_Func _ecore_sdl_engine_func =
    NULL,
    NULL,
    NULL,
-   NULL,
+   _ecore_evas_title_set,
    NULL,
    NULL,
    NULL,
