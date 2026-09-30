@@ -4187,6 +4187,10 @@ _status_config_rendering(Evas_Object *win,
      elm_list_item_selected_set(it, EINA_TRUE);
 
    elm_list_go(li);
+#ifdef __HAIKU__
+   elm_object_disabled_set(li, EINA_TRUE);
+   elm_object_tooltip_text_set(li, "Software rendering only, for now");
+#endif
 
    CHECK_ADD("Override Preferred Acceleration",
              "Force any application requesting<br>"
@@ -4194,6 +4198,9 @@ _status_config_rendering(Evas_Object *win,
              "configured acceleration as above",
              _cb_accel_override, NULL);
    elm_check_state_set(ck, elm_config_accel_preference_override_get());
+#ifdef __HAIKU__
+   elm_object_disabled_set(ck, EINA_TRUE);
+#endif
 
    /////////////////////////////////////////////
    sp = elm_separator_add(win);
