@@ -158,8 +158,9 @@ _ecore_sdl_event_key(SDL_Event *event, double timestamp, const char *text)
                memcpy(buf, text, tlen + 1);
                ev->string = buf;
             }
-          else
+          else if (keystable[i].compose && (strlen(keystable[i].compose) == 1))
             ev->string = keystable[i].compose;
+          /* else: a non-text key (Shift_L, Up, F1, ...), no string */
 
           return ev;
        }
@@ -219,8 +220,12 @@ ecore_sdl_feed_events(void)
              ev->event_window = event.button.windowID;
              ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
              ev->buttons = event.button.button;
-             ev->double_click = 0;
-             ev->triple_click = 0;
+             ev->x = event.button.x;
+             ev->y = event.button.y;
+             ev->root.x = ev->x;
+             ev->root.y = ev->y;
+             ev->double_click = (event.button.clicks == 2);
+             ev->triple_click = (event.button.clicks >= 3);
 
              /* Must set multi touch device to 0 or it will get ignored */
              ev->multi.device = 0;
@@ -242,6 +247,7 @@ ecore_sdl_feed_events(void)
              ev->window = event.wheel.windowID;
              ev->event_window = event.wheel.windowID;
              ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
+             SDL_GetMouseState(&ev->x, &ev->y);
              /* SDL: y > 0 is away from the user (up), x > 0 is right.
               * Ecore: direction 0 is vertical, 1 horizontal, z > 0 is
               * down/right. */
@@ -264,8 +270,12 @@ ecore_sdl_feed_events(void)
              ev->event_window = event.button.windowID;
              ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
              ev->buttons = event.button.button;
-             ev->double_click = 0;
-             ev->triple_click = 0;
+             ev->x = event.button.x;
+             ev->y = event.button.y;
+             ev->root.x = ev->x;
+             ev->root.y = ev->y;
+             ev->double_click = (event.button.clicks == 2);
+             ev->triple_click = (event.button.clicks >= 3);
 
              /* Must set multi touch device to 0 or it will get ignored */
              ev->multi.device = 0;

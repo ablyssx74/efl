@@ -8,6 +8,7 @@
 #include <SDL2/SDL.h>
 
 #include <Ecore.h>
+#include <Efl_Core.h>
 #include "ecore_private.h"
 #include <Ecore_Input.h>
 #include <Ecore_Input_Evas.h>
@@ -382,6 +383,151 @@ _ecore_evas_show(Ecore_Evas *ee)
    evas_event_feed_mouse_in(ee->evas, (unsigned int)((unsigned long long)(ecore_time_get() * 1000.0) & 0xffffffff), NULL);
 }
 
+/* Clipboard: the copy and paste buffer is mapped to the native clipboard
+ * through SDL (BClipboard on Haiku). The primary selection stays inside the
+ * process. */
+static Ecore_Evas_Selection_Callbacks _sdl_sel_cbs[ECORE_EVAS_SELECTION_BUFFER_LAST];
+static unsigned int _sdl_sel_seat = 0;
+
+static Eina_Bool
+_sdl_sel_is_text(const char *type)
+{
+   return type && (!strcmp(type, "text/plain;charset=utf-8") ||
+                   !strcmp(type, "text/plain"));
+}
+
+static Eina_Bool
+_ecore_evas_sdl_selection_claim(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection, Eina_Array *available_types, Ecore_Evas_Selection_Internal_Delivery delivery, Ecore_Evas_Selection_Internal_Cancel cancel)
+{
+   Ecore_Evas_Selection_Callbacks *cbs = &_sdl_sel_cbs[selection];
+
+   if (cbs->cancel) cbs->cancel(ee, _sdl_sel_seat, selection);
+   if (cbs->available_types) eina_array_free(cbs->available_types);
+
+   cbs->delivery = delivery;
+   cbs->cancel = cancel;
+   cbs->available_types = available_types;
+   _sdl_sel_seat = seat;
+
+   if ((selection == ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER) &&
+       delivery && available_types)
+     {
+        const char *type = NULL;
+        unsigned int i;
+
+        for (i = 0; i < eina_array_count_get(available_types); i++)
+          {
+             const char *t = eina_array_data_get(available_types, i);
+
+             if (_sdl_sel_is_text(t))
+               {
+                  type = t;
+                  break;
+               }
+          }
+        if (type)
+          {
+             Eina_Rw_Slice slice;
+
+             if (delivery(ee, seat, selection, type, &slice) && slice.mem)
+               {
+                  char *txt = strndup(slice.mem, slice.len);
+
+                  if (txt)
+                    {
+                       SDL_SetClipboardText(txt);
+                       free(txt);
+                    }
+                  free(slice.mem);
+               }
+          }
+     }
+
+   if (ee->func.fn_selection_changed)
+     ee->func.fn_selection_changed(ee, seat, selection);
+
+   return EINA_TRUE;
+}
+
+static Eina_Bool
+_ecore_evas_sdl_selection_has_owner(Ecore_Evas *ee EINA_UNUSED, unsigned int seat EINA_UNUSED, Ecore_Evas_Selection_Buffer selection)
+{
+   if (selection == ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER)
+     return SDL_HasClipboardText();
+   return EINA_FALSE;
+}
+
+static Eina_Future *
+_ecore_evas_sdl_selection_request(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection, Eina_Array *acceptable_types)
+{
+   Ecore_Evas_Selection_Callbacks *cbs = &_sdl_sel_cbs[selection];
+   Eina_Content *content = NULL;
+   const char *type = NULL;
+   Eina_Value value;
+   unsigned int i, j;
+
+   if (selection == ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER)
+     {
+        for (i = 0; !type && (i < eina_array_count_get(acceptable_types)); i++)
+          {
+             const char *t = eina_array_data_get(acceptable_types, i);
+
+             if (_sdl_sel_is_text(t)) type = t;
+          }
+        if (type && SDL_HasClipboardText())
+          {
+             char *txt = SDL_GetClipboardText();
+
+             if (txt)
+               {
+                  Eina_Slice slice = { strlen(txt) + 1, txt };
+
+                  content = eina_content_new(slice, type);
+                  SDL_free(txt);
+               }
+          }
+     }
+
+   /* in-process buffer (primary selection, or nothing on the clipboard) */
+   if (!content && cbs->delivery && cbs->available_types)
+     {
+        type = NULL;
+        for (i = 0; !type && (i < eina_array_count_get(cbs->available_types)); i++)
+          {
+             const char *a = eina_array_data_get(cbs->available_types, i);
+
+             for (j = 0; j < eina_array_count_get(acceptable_types); j++)
+               if (!strcmp(a, eina_array_data_get(acceptable_types, j)))
+                 {
+                    type = a;
+                    break;
+                 }
+          }
+        if (type)
+          {
+             Eina_Rw_Slice slice;
+
+             if (cbs->delivery(ee, seat, selection, type, &slice) && slice.mem)
+               {
+                  content = eina_content_new(eina_rw_slice_slice_get(slice), type);
+                  free(slice.mem);
+               }
+          }
+     }
+
+   for (i = 0; i < eina_array_count_get(acceptable_types); i++)
+     eina_stringshare_del(eina_array_data_get(acceptable_types, i));
+   eina_array_free(acceptable_types);
+
+   if (!content)
+     return eina_future_resolved(efl_loop_future_scheduler_get(efl_main_loop_get()),
+                                 eina_value_int_init(0));
+
+   value = eina_value_content_init(content);
+   eina_content_free(content);
+   return eina_future_resolved(efl_loop_future_scheduler_get(efl_main_loop_get()), value);
+}
+
 static Ecore_Evas_Engine_Func _ecore_sdl_engine_func =
 {
    _ecore_evas_sdl_free,
@@ -469,9 +615,9 @@ static Ecore_Evas_Engine_Func _ecore_sdl_engine_func =
    NULL, //fn_pointer_device_xy_get
    NULL, //fn_prepare
    NULL, //fn_last_tick_get
-   NULL, //fn_selection_claim
-   NULL, //fn_selection_has_owner
-   NULL, //fn_selection_request
+   _ecore_evas_sdl_selection_claim,
+   _ecore_evas_sdl_selection_has_owner,
+   _ecore_evas_sdl_selection_request,
 };
 
 static Ecore_Evas*
