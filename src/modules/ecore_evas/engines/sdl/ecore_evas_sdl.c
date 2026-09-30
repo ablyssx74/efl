@@ -132,6 +132,9 @@ _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED,
 
    if (!ee) return ECORE_CALLBACK_PASS_ON; /* pass on event */
 
+   /* already at that size (e.g. we resized the window ourselves) */
+   if ((ee->w == e->w) && (ee->h == e->h)) return ECORE_CALLBACK_PASS_ON;
+
    rmethod = evas_output_method_get(ee->evas);
    if (rmethod == evas_render_method_lookup("buffer"))
      {
@@ -179,6 +182,10 @@ _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED,
 
    evas_output_size_set(ee->evas, e->w, e->h);
    evas_output_viewport_set(ee->evas, 0, 0, e->w, e->h);
+   evas_damage_rectangle_add(ee->evas, 0, 0, e->w, e->h);
+
+   /* let the application (elm_win) know about the new size */
+   if (ee->func.fn_resize) ee->func.fn_resize(ee);
 
    return ECORE_CALLBACK_PASS_ON;
 }
