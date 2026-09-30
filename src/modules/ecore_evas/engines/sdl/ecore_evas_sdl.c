@@ -159,6 +159,9 @@ _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED,
 
    if (!ee) return ECORE_CALLBACK_PASS_ON; /* pass on event */
 
+   /* already at that size, e.g. we resized the window ourselves */
+   if ((ee->w == e->w) && (ee->h == e->h)) return ECORE_CALLBACK_PASS_ON;
+
    if (evas_output_method_get(ee->evas) == evas_render_method_lookup("buffer"))
      {
         if (!_ecore_evas_sdl_buffer_reset(ee, e->w, e->h))
@@ -172,6 +175,10 @@ _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED,
 
    evas_output_size_set(ee->evas, e->w, e->h);
    evas_output_viewport_set(ee->evas, 0, 0, e->w, e->h);
+   evas_damage_rectangle_add(ee->evas, 0, 0, e->w, e->h);
+
+   /* let the application (elm_win) know about the new size */
+   if (ee->func.fn_resize) ee->func.fn_resize(ee);
 
    return ECORE_CALLBACK_PASS_ON;
 }
@@ -280,6 +287,16 @@ _ecore_evas_resize(Ecore_Evas *ee, int w, int h)
    ee->req.h = h;
    ee->w = w;
    ee->h = h;
+
+   /* Also resize the native window, otherwise a window created with a
+    * placeholder size never grows to what the application asked for. */
+   {
+      Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+      int cw = 0, ch = 0;
+
+      SDL_GetWindowSize(swd->w, &cw, &ch);
+      if ((cw != w) || (ch != h)) SDL_SetWindowSize(swd->w, w, h);
+   }
 
    if (evas_output_method_get(ee->evas) == evas_render_method_lookup("buffer"))
      {
