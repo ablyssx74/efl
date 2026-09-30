@@ -172,11 +172,6 @@ _ecore_evas_sdl_redraw_later(Ecore_Evas *ee)
    Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
 
    if (swd->redraw_timer) ecore_timer_del(swd->redraw_timer);
-   if (_sdl_clipboard_job)
-     {
-        ecore_job_del(_sdl_clipboard_job);
-        _sdl_clipboard_job = NULL;
-     }
    swd->redraw_timer = ecore_timer_add(0.25, _ecore_evas_sdl_redraw_cb, ee);
 }
 
@@ -305,6 +300,11 @@ _ecore_evas_sdl_free(Ecore_Evas *ee)
    ecore_event_window_unregister(SDL_GetWindowID(swd->w));
 
    if (swd->redraw_timer) ecore_timer_del(swd->redraw_timer);
+   if (_sdl_clipboard_job)
+     {
+        ecore_job_del(_sdl_clipboard_job);
+        _sdl_clipboard_job = NULL;
+     }
    if (swd->page)
      SDL_DestroyTexture(swd->page);
    free(swd->pixels);
@@ -323,7 +323,6 @@ _ecore_evas_sdl_free(Ecore_Evas *ee)
 static void
 _ecore_evas_resize(Ecore_Evas *ee, int w, int h)
 {
-
    if ((w == ee->w) && (h == ee->h)) return;
    ee->req.w = w;
    ee->req.h = h;
@@ -699,10 +698,10 @@ _ecore_evas_internal_sdl_new(int rmethod, const char* name, int w, int h, int fu
    evas_output_method_set(ee->evas, rmethod);
 
    gl = !(rmethod == evas_render_method_lookup("buffer"));
-   /* The buffer flush ends up in SDL_UnlockTexture()/SDL_RenderPresent(),
-    * and SDL's renderer must only be driven from the thread that owns the
-    * window. Rendering asynchronously calls it from the evas render thread,
-    * which aborts on some platforms (e.g. Haiku's BGLView::UnlockGL()). */
+   /* Flushing a frame ends up in SDL_RenderPresent(), and SDL's renderer must
+    * only be driven from the thread that owns the window. Rendering
+    * asynchronously does that from the evas render thread, which aborts on
+    * some platforms (e.g. Haiku's BGLView::UnlockGL()). */
    ee->can_async_render = EINA_FALSE;
 
    swd->w = SDL_CreateWindow(name,
