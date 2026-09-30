@@ -1,0 +1,276 @@
+SUMMARY="The Enlightenment Foundation Libraries"
+DESCRIPTION="EFL is a collection of libraries for building graphical applications: \
+Evas (canvas), Edje (themes), Ecore (main loop and system integration), \
+Elementary (widgets), Emotion (media playback), Eina, Eet and more.
+
+This build uses the SDL engine for windowing, SDL audio for sound and \
+GStreamer for media playback."
+HOMEPAGE="https://www.enlightenment.org"
+COPYRIGHT="2002-2026 Enlightenment Project and contributors"
+LICENSE="BSD (2-clause)
+	GNU LGPL v2.1
+	GNU GPL v2
+	Zlib"
+REVISION="2"
+SOURCE_URI="git+https://github.com/ablyssx74/efl.git#b2069e825eb4227b3402ffc57bcd183b1a5e4ff8"
+SOURCE_DIR="efl"
+
+ARCHITECTURES="all !x86_gcc2"
+SECONDARY_ARCHITECTURES=""
+
+PROVIDES="
+	efl = $portVersion
+	lib:libecore = 1.28.99 compat >= 1
+	lib:libecore_audio = 1.28.99 compat >= 1
+	lib:libecore_con = 1.28.99 compat >= 1
+	lib:libecore_evas = 1.28.99 compat >= 1
+	lib:libecore_file = 1.28.99 compat >= 1
+	lib:libecore_imf = 1.28.99 compat >= 1
+	lib:libecore_imf_evas = 1.28.99 compat >= 1
+	lib:libecore_input = 1.28.99 compat >= 1
+	lib:libecore_input_evas = 1.28.99 compat >= 1
+	lib:libecore_sdl = 1.28.99 compat >= 1
+	lib:libecore_ipc = 1.28.99 compat >= 1
+	lib:libector = 1.28.99 compat >= 1
+	lib:libedje = 1.28.99 compat >= 1
+	lib:libeet = 1.28.99 compat >= 1
+	lib:libefl = 1.28.99 compat >= 1
+	lib:libefreet = 1.28.99 compat >= 1
+	lib:libefreet_mime = 1.28.99 compat >= 1
+	lib:libefreet_trash = 1.28.99 compat >= 1
+	lib:libeina = 1.28.99 compat >= 1
+	lib:libeio = 1.28.99 compat >= 1
+	lib:libeldbus = 1.28.99 compat >= 1
+	lib:libelementary = 1.28.99 compat >= 1
+	lib:libembryo = 1.28.99 compat >= 1
+	lib:libemile = 1.28.99 compat >= 1
+	lib:libemotion = 1.28.99 compat >= 1
+	lib:libeo = 1.28.99 compat >= 1
+	lib:libeo_dbg = 1.28.99 compat >= 1
+	lib:libeolian = 1.28.99 compat >= 1
+	lib:libethumb = 1.28.99 compat >= 1
+	lib:libethumb_client = 1.28.99 compat >= 1
+	lib:libevas = 1.28.99 compat >= 1
+	lib:libexactness_play = 1.28.99 compat >= 1
+	lib:libexactness_record = 1.28.99 compat >= 1
+	cmd:diffeet
+	cmd:ecore_evas_convert
+	cmd:edje_cc
+	cmd:edje_codegen
+	cmd:edje_decc
+	cmd:edje_external_inspector
+	cmd:edje_inspector
+	cmd:edje_pick
+	cmd:edje_player
+	cmd:edje_recc
+	cmd:edje_watch
+	cmd:eet
+	cmd:eetpack
+	cmd:efl_debug
+	cmd:efl_debugd
+	cmd:efreetd
+	cmd:eina_btlog
+	cmd:eina_modinfo
+	cmd:eldbus_codegen
+	cmd:elementary_codegen
+	cmd:elementary_config
+	cmd:elementary_perf
+	cmd:elementary_quicklaunch
+	cmd:elementary_run
+	cmd:elementary_test
+	cmd:elm_prefs_cc
+	cmd:embryo_cc
+	cmd:eo_debug
+	cmd:eolian_gen
+	cmd:ethumb
+	cmd:ethumbd
+	cmd:ethumbd_client
+	cmd:exactness
+	cmd:exactness_inject
+	cmd:exactness_inspect
+	cmd:exactness_play
+	cmd:exactness_record
+	cmd:vieet
+	"
+REQUIRES="
+	haiku
+	lib:libcrypto
+	lib:libdbus_1
+	lib:libexecinfo
+	lib:libfontconfig
+	lib:libfreetype
+	lib:libfribidi
+	lib:libglib_2.0
+	lib:libgobject_2.0
+	lib:libiconv
+	lib:libgif
+	lib:libgstbase_1.0
+	lib:libgstpbutils_1.0
+	lib:libgstreamer_1.0
+	lib:libgstvideo_1.0
+	lib:libharfbuzz
+	lib:libjpeg
+	lib:libluajit_5.1
+	lib:libopenjp2
+	lib:libpng16
+	lib:libsdl2_2.0
+	lib:libssl
+	lib:libtiff
+	lib:libwebp
+	lib:libwebpdemux
+	lib:libz
+	gst_plugins_base
+	gst_plugins_good
+	gst_plugins_libav
+	"
+
+PROVIDES_devel="
+	efl_devel = $portVersion
+	devel:libecore = 1.28.99 compat >= 1
+	devel:libecore_audio = 1.28.99 compat >= 1
+	devel:libecore_con = 1.28.99 compat >= 1
+	devel:libecore_evas = 1.28.99 compat >= 1
+	devel:libecore_file = 1.28.99 compat >= 1
+	devel:libecore_imf = 1.28.99 compat >= 1
+	devel:libecore_imf_evas = 1.28.99 compat >= 1
+	devel:libecore_input = 1.28.99 compat >= 1
+	devel:libecore_input_evas = 1.28.99 compat >= 1
+	devel:libecore_ipc = 1.28.99 compat >= 1
+	devel:libector = 1.28.99 compat >= 1
+	devel:libedje = 1.28.99 compat >= 1
+	devel:libeet = 1.28.99 compat >= 1
+	devel:libefl = 1.28.99 compat >= 1
+	devel:libefreet = 1.28.99 compat >= 1
+	devel:libefreet_mime = 1.28.99 compat >= 1
+	devel:libefreet_trash = 1.28.99 compat >= 1
+	devel:libeina = 1.28.99 compat >= 1
+	devel:libeio = 1.28.99 compat >= 1
+	devel:libeldbus = 1.28.99 compat >= 1
+	devel:libelementary = 1.28.99 compat >= 1
+	devel:libembryo = 1.28.99 compat >= 1
+	devel:libemile = 1.28.99 compat >= 1
+	devel:libemotion = 1.28.99 compat >= 1
+	devel:libeo = 1.28.99 compat >= 1
+	devel:libeo_dbg = 1.28.99 compat >= 1
+	devel:libeolian = 1.28.99 compat >= 1
+	devel:libethumb = 1.28.99 compat >= 1
+	devel:libethumb_client = 1.28.99 compat >= 1
+	devel:libevas = 1.28.99 compat >= 1
+	devel:libexactness_play = 1.28.99 compat >= 1
+	devel:libexactness_record = 1.28.99 compat >= 1
+	"
+REQUIRES_devel="
+	efl == $portVersion base
+	# the .pc files of EFL refer to these
+	devel:libcrypto
+	devel:libdbus_1
+	devel:libfontconfig
+	devel:libfreetype
+	devel:libfribidi
+	devel:libharfbuzz
+	devel:libjpeg
+	devel:libluajit_5.1
+	devel:libpng16
+	devel:libsdl2
+	devel:libsndfile
+	devel:libssl
+	devel:libz
+	"
+
+BUILD_REQUIRES="
+	haiku_devel
+	devel:libcrypto
+	devel:libcurl
+	devel:libdbus_1
+	devel:libexecinfo
+	devel:libfontconfig
+	devel:libfreetype
+	devel:libfribidi
+	devel:libgif
+	devel:libgstapp_1.0
+	devel:libgstaudio_1.0
+	devel:libgstbase_1.0
+	devel:libgstpbutils_1.0
+	devel:libgstreamer_1.0
+	devel:libgsttag_1.0
+	devel:libgstvideo_1.0
+	devel:libharfbuzz
+	devel:libjpeg
+	devel:libluajit_5.1
+	devel:liblz4
+	devel:libopenjp2
+	devel:libpng16
+	devel:libsdl2
+	devel:libsndfile
+	devel:libssl
+	devel:libtiff
+	devel:libwebp
+	devel:libwebpdemux
+	devel:libz
+	"
+BUILD_PREREQUIRES="
+	cmd:gcc
+	cmd:g++
+	cmd:meson
+	cmd:ninja
+	cmd:pkg_config
+	cmd:python3
+	"
+
+BUILD()
+{
+	# EFL tools created during the build want a home directory (~/.run), which
+	# the build chroot does not have
+	mkdir -p /boot/home
+
+	rm -rf build
+	meson setup build \
+		--prefix=$prefix \
+		--bindir=$relativeBinDir \
+		--libdir=$relativeLibDir \
+		--datadir=$relativeDataDir \
+		--includedir=$relativeIncludeDir \
+		--sysconfdir=$relativeSettingsDir \
+		--buildtype=plain \
+		-Dbuild-tests=false \
+		-Dbuild-examples=false \
+		-Dnls=false \
+		-Dsystemd=false \
+		-Dx11=false \
+		-Dwl=false \
+		-Dfb=false \
+		-Ddrm=false \
+		-Dbuffer=false \
+		-Dinput=false \
+		-Deeze=false \
+		-Dphysics=false \
+		-Davahi=false \
+		-Dlibmount=false \
+		-Dopengl=none \
+		-Dsdl=true \
+		-Daudio=true \
+		-Dgstreamer=true \
+		-Dpulseaudio=false \
+		-Dpipewire=false \
+		-Dedje-sound-and-video=true \
+		-Dlua-interpreter=luajit \
+		-Dbindings= \
+		-Devas-loaders-disabler=pdf,ps,raw,rsvg,xcf,gst,json,avif,heif,jxl
+	ninja -C build
+}
+
+INSTALL()
+{
+	meson install -C build --no-rebuild
+
+	# only exactness installs to a top-level share directory
+	mkdir -p $dataDir
+	mv $prefix/share/exactness $dataDir/
+	rmdir $prefix/share
+
+	prepareInstalledDevelLibs libecore libecore_audio libecore_con libecore_evas libecore_file libecore_imf libecore_imf_evas libecore_input libecore_input_evas libecore_ipc libector libedje libeet libefl libefreet libefreet_mime libefreet_trash libeina libeio libeldbus libelementary libembryo libemile libemotion libeo libeo_dbg libeolian libethumb libethumb_client libevas libexactness_play libexactness_record
+	fixPkgconfig
+
+	packageEntries devel \
+		$developDir
+}
