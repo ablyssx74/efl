@@ -58,6 +58,8 @@ struct _Ecore_Evas_SDL_Switch_Data
     * texture are not guaranteed to be preserved between two locks. */
    void *pixels;
    int pitch;
+
+   Ecore_Timer *redraw_timer;
 };
 
 static int                      _ecore_evas_init_count = 0;
@@ -149,6 +151,29 @@ _ecore_evas_sdl_event_lost_focus(void *data EINA_UNUSED, int type EINA_UNUSED, v
 }
 
 static Eina_Bool
+_ecore_evas_sdl_redraw_cb(void *data)
+{
+   Ecore_Evas *ee = data;
+   Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+
+   swd->redraw_timer = NULL;
+   evas_damage_rectangle_add(ee->evas, 0, 0, ee->w, ee->h);
+   return ECORE_CALLBACK_CANCEL;
+}
+
+/* Frames presented while the native window is still being created and sized
+ * can be dropped (seen on Haiku, where the window stays black until the next
+ * frame), so present the whole canvas once more shortly after. */
+static void
+_ecore_evas_sdl_redraw_later(Ecore_Evas *ee)
+{
+   Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+
+   if (swd->redraw_timer) ecore_timer_del(swd->redraw_timer);
+   swd->redraw_timer = ecore_timer_add(0.25, _ecore_evas_sdl_redraw_cb, ee);
+}
+
+static Eina_Bool
 _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED, void *event)
 {
    Ecore_Sdl_Event_Video_Resize *e;
@@ -159,8 +184,15 @@ _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED,
 
    if (!ee) return ECORE_CALLBACK_PASS_ON; /* pass on event */
 
-   /* already at that size, e.g. we resized the window ourselves */
-   if ((ee->w == e->w) && (ee->h == e->h)) return ECORE_CALLBACK_PASS_ON;
+   /* Already at that size, e.g. we resized the window ourselves: the frame
+    * presented before the window manager applied the size may have been
+    * lost, so just redraw. */
+   if ((ee->w == e->w) && (ee->h == e->h))
+     {
+        evas_damage_rectangle_add(ee->evas, 0, 0, e->w, e->h);
+        _ecore_evas_sdl_redraw_later(ee);
+        return ECORE_CALLBACK_PASS_ON;
+     }
 
    if (evas_output_method_get(ee->evas) == evas_render_method_lookup("buffer"))
      {
@@ -176,6 +208,7 @@ _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED,
    evas_output_size_set(ee->evas, e->w, e->h);
    evas_output_viewport_set(ee->evas, 0, 0, e->w, e->h);
    evas_damage_rectangle_add(ee->evas, 0, 0, e->w, e->h);
+   _ecore_evas_sdl_redraw_later(ee);
 
    /* let the application (elm_win) know about the new size */
    if (ee->func.fn_resize) ee->func.fn_resize(ee);
@@ -264,6 +297,7 @@ _ecore_evas_sdl_free(Ecore_Evas *ee)
 
    ecore_event_window_unregister(SDL_GetWindowID(swd->w));
 
+   if (swd->redraw_timer) ecore_timer_del(swd->redraw_timer);
    if (swd->page)
      SDL_DestroyTexture(swd->page);
    free(swd->pixels);
@@ -307,6 +341,7 @@ _ecore_evas_resize(Ecore_Evas *ee, int w, int h)
    evas_output_size_set(ee->evas, ee->w, ee->h);
    evas_output_viewport_set(ee->evas, 0, 0, ee->w, ee->h);
    evas_damage_rectangle_add(ee->evas, 0, 0, ee->w, ee->h);
+   _ecore_evas_sdl_redraw_later(ee);
 
    if (ee->func.fn_resize) ee->func.fn_resize(ee);
 }
