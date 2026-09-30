@@ -485,7 +485,7 @@ _ecore_evas_sdl_selection_request(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_
 
              if (txt)
                {
-                  Eina_Slice slice = { strlen(txt) + 1, txt };
+                  Eina_Slice slice = { .len = strlen(txt) + 1, .mem = txt };
 
                   content = eina_content_new(slice, type);
                   SDL_free(txt);
