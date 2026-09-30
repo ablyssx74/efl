@@ -30,6 +30,8 @@ EAPI int ECORE_SDL_EVENT_EXPOSE = 0;
 static int _ecore_sdl_init_count = 0;
 static Eina_Rbtree *repeat = NULL;
 
+static void _ecore_sdl_repeat_stop(void);
+
 static Eina_Rbtree_Direction
 _ecore_sdl_pressed_key(const Ecore_SDL_Pressed *left,
                        const Ecore_SDL_Pressed *right,
@@ -98,6 +100,7 @@ ecore_sdl_shutdown(void)
    if (--_ecore_sdl_init_count != 0)
      return _ecore_sdl_init_count;
 
+   _ecore_sdl_repeat_stop();
    SDL_Quit();
 
    ecore_event_type_flush(ECORE_SDL_EVENT_GOT_FOCUS,
@@ -166,6 +169,70 @@ _ecore_sdl_event_key(SDL_Event *event, double timestamp, const char *text)
        }
 
    return NULL;
+}
+
+/* Key repeat: SDL does not report repeated key downs on every platform
+ * (Haiku does not), so generate them while a key is held. If SDL does send
+ * repeats for the held key, ours are switched off. */
+#define ECORE_SDL_REPEAT_DELAY    0.5
+#define ECORE_SDL_REPEAT_INTERVAL 0.03
+
+static Ecore_Timer *_repeat_timer = NULL;
+static SDL_Event _repeat_event;
+static char _repeat_text[8];
+static Eina_Bool _repeat_has_text = EINA_FALSE;
+
+static void
+_ecore_sdl_repeat_stop(void)
+{
+   if (_repeat_timer) ecore_timer_del(_repeat_timer);
+   _repeat_timer = NULL;
+}
+
+static Eina_Bool
+_ecore_sdl_key_is_modifier(SDL_Keycode sym)
+{
+   switch (sym)
+     {
+      case SDLK_LSHIFT: case SDLK_RSHIFT:
+      case SDLK_LCTRL: case SDLK_RCTRL:
+      case SDLK_LALT: case SDLK_RALT:
+      case SDLK_LGUI: case SDLK_RGUI:
+      case SDLK_MODE: case SDLK_CAPSLOCK:
+      case SDLK_NUMLOCKCLEAR: case SDLK_SCROLLLOCK:
+         return EINA_TRUE;
+      default:
+         return EINA_FALSE;
+     }
+}
+
+static Eina_Bool
+_ecore_sdl_repeat_cb(void *data EINA_UNUSED)
+{
+   unsigned int timestamp;
+   Ecore_Event_Key *ev;
+
+   timestamp = (unsigned int)((unsigned long long)(ecore_time_get() * 1000.0) & 0xffffffff);
+   ev = _ecore_sdl_event_key(&_repeat_event, timestamp, NULL);
+   if (ev) ecore_event_add(ECORE_EVENT_KEY_UP, ev, NULL, NULL);
+   ev = _ecore_sdl_event_key(&_repeat_event, timestamp,
+                             _repeat_has_text ? _repeat_text : NULL);
+   if (ev) ecore_event_add(ECORE_EVENT_KEY_DOWN, ev, NULL, NULL);
+
+   ecore_timer_interval_set(_repeat_timer, ECORE_SDL_REPEAT_INTERVAL);
+   return ECORE_CALLBACK_RENEW;
+}
+
+static void
+_ecore_sdl_repeat_start(const SDL_Event *event, const char *text)
+{
+   _ecore_sdl_repeat_stop();
+   if (_ecore_sdl_key_is_modifier(event->key.keysym.sym)) return;
+
+   _repeat_event = *event;
+   _repeat_has_text = (text && (strlen(text) < sizeof(_repeat_text)));
+   if (_repeat_has_text) strcpy(_repeat_text, text);
+   _repeat_timer = ecore_timer_add(ECORE_SDL_REPEAT_DELAY, _ecore_sdl_repeat_cb, NULL);
 }
 
 /**
@@ -299,6 +366,8 @@ ecore_sdl_feed_events(void)
                                                                     EINA_RBTREE_CMP_KEY_CB(_ecore_sdl_pressed_node), NULL);
              if (entry)
                {
+                  /* SDL reports repeats itself for this key */
+                  _ecore_sdl_repeat_stop();
                   ev = _ecore_sdl_event_key(&event, timestamp, NULL);
                   if (ev) ecore_event_add(ECORE_EVENT_KEY_UP, ev, NULL, NULL);
                }
@@ -318,6 +387,7 @@ ecore_sdl_feed_events(void)
                      text = next.text.text;
                   }
                 ev = _ecore_sdl_event_key(&event, timestamp, text);
+                if (!entry) _ecore_sdl_repeat_start(&event, text);
              }
              if (ev) ecore_event_add(ECORE_EVENT_KEY_DOWN, ev, NULL, NULL);
 
@@ -346,6 +416,10 @@ ecore_sdl_feed_events(void)
                                                      EINA_RBTREE_CMP_NODE_CB(_ecore_sdl_pressed_key), NULL);
                   free(entry);
                }
+
+             if (_repeat_timer &&
+                 (_repeat_event.key.keysym.sym == event.key.keysym.sym))
+               _ecore_sdl_repeat_stop();
 
              ev = _ecore_sdl_event_key(&event, timestamp, NULL);
              if (ev) ecore_event_add(ECORE_EVENT_KEY_UP, ev, NULL, NULL);
@@ -396,6 +470,10 @@ ecore_sdl_feed_events(void)
                 case SDL_WINDOWEVENT_FOCUS_LOST:
                   {
                      Ecore_Sdl_Event_Window *ev;
+
+                     /* the key up would go to another window */
+                     if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+                       _ecore_sdl_repeat_stop();
 
                      ev = calloc(1, sizeof (Ecore_Sdl_Event_Window));
                      ev->windowID = event.window.windowID;
