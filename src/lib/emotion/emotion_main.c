@@ -168,6 +168,9 @@ emotion_init(void)
    ecore_init();
    eet_init();
 
+   /* a zeroed mutex is only valid on some pthread implementations */
+   eina_lock_new(&emotion_pending_lock);
+
    snprintf(buffer, sizeof(buffer), "%s/emotion.cfg",
             eina_prefix_data_get(_emotion_pfx));
    _emotion_config_file = eet_open(buffer, EET_FILE_MODE_READ);
@@ -183,6 +186,7 @@ emotion_init(void)
    emotion_webcam_shutdown();
 
  error_webcam:
+   eina_lock_free(&emotion_pending_lock);
    eina_prefix_free(_emotion_pfx);
    _emotion_pfx = NULL;
 
