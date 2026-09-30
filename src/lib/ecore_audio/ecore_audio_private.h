@@ -226,10 +226,6 @@ typedef struct _Ecore_Audio_Lib_Pipewire Ecore_Audio_Lib_Pipewire;
 
 Eina_Bool _ecore_audio_out_pipewire_probe(void);
 
-#ifdef HAVE_SDL_AUDIO
-Eina_Bool _ecore_audio_out_sdl_probe(void);
-#endif
-
 struct _Ecore_Audio_Lib_Pipewire
 {
    Eina_Module *mod;
@@ -270,6 +266,10 @@ extern Ecore_Audio_Lib_Pipewire *ecore_audio_pipewire_lib;
 
 Eina_Bool ecore_audio_pipewire_lib_load(void);
 void      ecore_audio_pipewire_lib_unload(void);
+#endif
+
+#ifdef HAVE_SDL_AUDIO
+Eina_Bool _ecore_audio_out_sdl_probe(void);
 #endif
 
 //////////////////////////////////////////////////////////////////////////
