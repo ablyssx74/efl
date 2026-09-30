@@ -224,6 +224,7 @@ ECORE_AUDIO_API void                ecore_audio_obj_name_set(Efl_Object* obj, co
 
 #include <ecore_audio_obj_out_pulse.h>
 #include <ecore_audio_obj_out_pipewire.h>
+#include <ecore_audio_obj_out_sdl.h>
 
 #include <ecore_audio_obj_out_wasapi.h>
 
