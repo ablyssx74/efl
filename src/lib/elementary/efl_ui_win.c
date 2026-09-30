@@ -5411,6 +5411,9 @@ _elm_win_finalize_internal(Eo *obj, Efl_Ui_Win_Data *sd, const char *name, Efl_U
                     enginelist[p++] = ENGINE_GET();
 
 // add all engines with gl/accelerated ones first - only engines compiled
+#ifdef HAVE_ELEMENTARY_HAIKU
+                  enginelist[p++] = ELM_SOFTWARE_HAIKU;
+#endif
 #ifdef HAVE_ELEMENTARY_X
                   enginelist[p++] = ELM_OPENGL_X11;
 #endif
@@ -5456,6 +5459,9 @@ _elm_win_finalize_internal(Eo *obj, Efl_Ui_Win_Data *sd, const char *name, Efl_U
                             || (accel && !strcmp(accel, "none"))))
                     enginelist[p++] = _elm_config->engine;
 // add all engines with gl/accelerated ones first - only engines compiled
+#ifdef HAVE_ELEMENTARY_HAIKU
+                  enginelist[p++] = ELM_SOFTWARE_HAIKU;
+#endif
 #ifdef HAVE_ELEMENTARY_X
                   enginelist[p++] = ELM_SOFTWARE_X11;
 #endif
@@ -5537,6 +5543,8 @@ _elm_win_finalize_internal(Eo *obj, Efl_Ui_Win_Data *sd, const char *name, Efl_U
                tmp_sd.ee = ecore_evas_software_gdi_new(NULL, 0, 0, 1, 1);
              else if (!strcmp(enginelist[i], ELM_OPENGL_WIN32))
                tmp_sd.ee = ecore_evas_gl_win32_new(NULL, 1, 1, 0, 0);
+             else if (!strcmp(enginelist[i], ELM_SOFTWARE_HAIKU))
+               tmp_sd.ee = ecore_evas_haiku_new(NULL, 1, 1);
              else if (!strcmp(enginelist[i], ELM_SOFTWARE_SDL))
                tmp_sd.ee = ecore_evas_sdl_new(NULL, 0, 0, 0, 0, 0, 1);
              else if (!strcmp(enginelist[i], ELM_OPENGL_SDL))

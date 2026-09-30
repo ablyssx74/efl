@@ -1006,6 +1006,10 @@ if get_option('sdl')
   config_h.set('HAVE_ELEMENTARY_SDL', '1')
 endif
 
+if sys_haiku
+  config_h.set('HAVE_ELEMENTARY_HAIKU', '1')
+endif
+
 if get_option('cocoa')
   config_h.set('HAVE_ELEMENTARY_COCOA', '1')
   elementary_deps += ecore_cocoa

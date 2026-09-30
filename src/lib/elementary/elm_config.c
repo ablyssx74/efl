@@ -58,6 +58,7 @@ const char *_elm_engines[] = {
    "drm",
    "gl_drm",
    "opengl_win32",
+   "haiku",
    NULL
 };
 
@@ -2912,6 +2913,10 @@ _env_get(void)
                  (!strcasecmp(s, "software-fb")) ||
                  (!strcasecmp(s, "software_fb")))
           eina_stringshare_replace(&_elm_config->engine, ELM_SOFTWARE_FB);
+        else if ((!strcasecmp(s, "haiku")) ||
+                 (!strcasecmp(s, "software-haiku")) ||
+                 (!strcasecmp(s, "software_haiku")))
+          eina_stringshare_replace(&_elm_config->engine, ELM_SOFTWARE_HAIKU);
         else if ((!strcasecmp(s, "sdl")) ||
                  (!strcasecmp(s, "software-sdl")) ||
                  (!strcasecmp(s, "software_sdl")))
