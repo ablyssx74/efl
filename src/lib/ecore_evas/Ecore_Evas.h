@@ -97,6 +97,7 @@ extern "C" {
 #define HAVE_ECORE_EVAS_WIN32_GL 1
 #define HAVE_ECORE_EVAS_COCOA 1
 #define HAVE_ECORE_EVAS_SDL 1
+#define HAVE_ECORE_EVAS_HAIKU 1
 //#define HAVE_ECORE_EVAS_WINCE 1 /* @deprecated */
 //#define HAVE_ECORE_EVAS_EWS 1 /* @deprecated */
 #define HAVE_ECORE_EVAS_WAYLAND_SHM 1
@@ -1954,6 +1955,19 @@ EAPI Ecore_Evas *ecore_evas_gl_glew_new(Ecore_Win32_Window *parent,
                                         int                 height) EINA_DEPRECATED;
 
 EAPI Ecore_Win32_Window *ecore_evas_win32_window_get(const Ecore_Evas *ee);
+
+/**
+ * @brief Creates a new @c Ecore_Evas canvas in a native Haiku window.
+ *
+ * The canvas is rendered in software and drawn by the app server, nothing
+ * goes through OpenGL. Only available on Haiku.
+ *
+ * @param name  Title of the window, defaults to "EFL" if NULL.
+ * @param w     Width of the canvas, in pixels.
+ * @param h     Height of the canvas, in pixels.
+ * @return A new @c Ecore_Evas instance, or @c NULL on failure.
+ */
+EAPI Ecore_Evas     *ecore_evas_haiku_new(const char *name, int w, int h);
 
 /**
  * @brief Creates a new @c Ecore_Evas canvas bound to the Evas

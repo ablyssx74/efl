@@ -1,0 +1,11 @@
+engine_src = files(['ecore_evas_haiku.c', 'haiku_window.cpp'])
+engine_deps = [ecore_input, ecore, cc.find_library('be')]
+
+shared_module(mod_full_name, engine_src,
+  c_args : package_c_args,
+  include_directories : config_dir + [engine_include_dir],
+  dependencies : [eina, ecore_evas, ecore_input_evas] + engine_deps,
+  install : true,
+  install_dir : mod_install_dir,
+  name_suffix : sys_mod_extension
+)
