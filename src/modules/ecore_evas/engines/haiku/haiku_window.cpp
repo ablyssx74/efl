@@ -7,10 +7,12 @@
 #include <Application.h>
 #include <Bitmap.h>
 #include <Clipboard.h>
+#include <Cursor.h>
 #include <File.h>
 #include <InterfaceDefs.h>
 #include <Message.h>
 #include <OS.h>
+#include <Screen.h>
 #include <View.h>
 #include <Window.h>
 #include <image.h>
@@ -41,6 +43,14 @@ struct _Haiku_Window
    std::deque<Haiku_Event> queue;
    sem_id queue_lock;
    int pipe_fds[2];
+
+   /* fullscreen and maximized: what to go back to */
+   bool fullscreen;
+   bool zoomed;
+   BRect saved_frame;
+   BRect saved_zoom_frame;
+   window_look saved_look;
+   window_feel saved_feel;
 };
 
 /* ------------------------------------------------------------------ */
@@ -395,7 +405,8 @@ class HaikuWindow : public BWindow
 {
 public:
    HaikuWindow(BRect frame, const char *title, Haiku_Window *win)
-     : BWindow(frame, title, B_TITLED_WINDOW, 0), fWin(win)
+     : BWindow(frame, title, B_DOCUMENT_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL, 0),
+       fWin(win)
    {
    }
 
@@ -441,6 +452,8 @@ haiku_window_new(const char *title, int x, int y, int w, int h)
 
    Haiku_Window *win = new Haiku_Window();
    win->bitmap = NULL;
+   win->fullscreen = false;
+   win->zoomed = false;
    win->bitmap_lock = create_sem(1, "efl bitmap");
    win->queue_lock = create_sem(1, "efl event queue");
    if (pipe(win->pipe_fds) != 0)
@@ -583,6 +596,121 @@ haiku_window_size_limits_set(Haiku_Window *win, int min_w, int min_h, int max_w,
                                    max_h > 0 ? max_h - 1 : B_SIZE_UNLIMITED);
         win->window->Unlock();
      }
+}
+
+extern "C" void
+haiku_window_size_step_set(Haiku_Window *win, int base_w, int base_h, int step_w, int step_h)
+{
+   if (!win->window->Lock()) return;
+   if ((step_w <= 1) && (step_h <= 1))
+     win->window->SetWindowAlignment(B_PIXEL_ALIGNMENT, 1, 0, 1, 0, 1, 0, 1, 0);
+   else
+     {
+        /* Haiku sizes are coordinates: a content of n pixels is n - 1 */
+        if (step_w < 1) step_w = 1;
+        if (step_h < 1) step_h = 1;
+        int off_w = (((base_w - 1) % step_w) + step_w) % step_w;
+        int off_h = (((base_h - 1) % step_h) + step_h) % step_h;
+        win->window->SetWindowAlignment(B_PIXEL_ALIGNMENT, 1, 0, step_w, off_w,
+                                        1, 0, step_h, off_h);
+     }
+   win->window->Unlock();
+}
+
+extern "C" void
+haiku_window_fullscreen_set(Haiku_Window *win, int on)
+{
+   if (!win->window->Lock()) return;
+   if (on && !win->fullscreen)
+     {
+        win->saved_frame = win->window->Frame();
+        win->saved_look = win->window->Look();
+        win->saved_feel = win->window->Feel();
+        BRect screen = BScreen(win->window).Frame();
+        win->window->SetLook(B_NO_BORDER_WINDOW_LOOK);
+        win->window->MoveTo(screen.left, screen.top);
+        win->window->ResizeTo(screen.Width(), screen.Height());
+        win->fullscreen = true;
+     }
+   else if (!on && win->fullscreen)
+     {
+        win->window->SetLook(win->saved_look);
+        win->window->SetFeel(win->saved_feel);
+        win->window->MoveTo(win->saved_frame.left, win->saved_frame.top);
+        win->window->ResizeTo(win->saved_frame.Width(), win->saved_frame.Height());
+        win->fullscreen = false;
+     }
+   win->window->Unlock();
+}
+
+extern "C" void
+haiku_window_maximized_set(Haiku_Window *win, int on)
+{
+   if (!win->window->Lock()) return;
+   if (on && !win->zoomed)
+     {
+        /* Zoom() only moves a window that has no size limits, so fill the
+         * screen by hand, leaving room for the border and the title tab */
+        win->saved_zoom_frame = win->window->Frame();
+        BRect screen = BScreen(win->window).Frame();
+        BRect frame = win->window->Frame();
+        BRect decorator = win->window->DecoratorFrame();
+        float left = frame.left - decorator.left;
+        float top = frame.top - decorator.top;
+        float right = decorator.right - frame.right;
+        float bottom = decorator.bottom - frame.bottom;
+        win->window->MoveTo(screen.left + left, screen.top + top);
+        win->window->ResizeTo(screen.Width() - left - right,
+                              screen.Height() - top - bottom);
+        win->zoomed = true;
+     }
+   else if (!on && win->zoomed)
+     {
+        win->window->MoveTo(win->saved_zoom_frame.left, win->saved_zoom_frame.top);
+        win->window->ResizeTo(win->saved_zoom_frame.Width(), win->saved_zoom_frame.Height());
+        win->zoomed = false;
+     }
+   win->window->Unlock();
+}
+
+extern "C" void
+haiku_window_iconified_set(Haiku_Window *win, int on)
+{
+   if (win->window->Lock())
+     {
+        win->window->Minimize(on != 0);
+        win->window->Unlock();
+     }
+}
+
+extern "C" void
+haiku_window_borderless_set(Haiku_Window *win, int on)
+{
+   if (win->window->Lock())
+     {
+        win->window->SetLook(on ? B_NO_BORDER_WINDOW_LOOK : B_DOCUMENT_WINDOW_LOOK);
+        win->window->Unlock();
+     }
+}
+
+extern "C" void
+haiku_window_cursor_visible_set(Haiku_Window *win, int visible)
+{
+   if (win->window->LockLooper())
+     {
+        BCursor cursor(visible ? B_CURSOR_ID_SYSTEM_DEFAULT : B_CURSOR_ID_NO_CURSOR);
+        win->view->SetViewCursor(&cursor);
+        win->window->UnlockLooper();
+     }
+}
+
+extern "C" void
+haiku_window_screen_size_get(Haiku_Window *win, int *w, int *h)
+{
+   BRect frame = BScreen(win->window).Frame();
+
+   if (w) *w = (int)frame.Width() + 1;
+   if (h) *h = (int)frame.Height() + 1;
 }
 
 extern "C" void

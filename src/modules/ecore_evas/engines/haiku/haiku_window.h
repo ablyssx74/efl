@@ -81,6 +81,21 @@ void haiku_window_lower(Haiku_Window *win);
 void haiku_window_activate(Haiku_Window *win);
 void haiku_window_size_limits_set(Haiku_Window *win, int min_w, int min_h, int max_w, int max_h);
 
+/* The window size is base + n * step on each axis (terminals resize in whole
+ * cells); 0 or 1 for a step means any size. */
+void haiku_window_size_step_set(Haiku_Window *win, int base_w, int base_h, int step_w, int step_h);
+void haiku_window_fullscreen_set(Haiku_Window *win, int on);
+void haiku_window_maximized_set(Haiku_Window *win, int on);
+void haiku_window_iconified_set(Haiku_Window *win, int on);
+void haiku_window_borderless_set(Haiku_Window *win, int on);
+
+/* Hide the pointer of the system over the window, when the canvas draws one
+ * of its own. */
+void haiku_window_cursor_visible_set(Haiku_Window *win, int visible);
+
+/* size of the screen the window is on */
+void haiku_window_screen_size_get(Haiku_Window *win, int *w, int *h);
+
 /* Show a frame: copies w x h pixels (32 bits, pitch bytes per row) into the
  * window and redraws it. */
 void haiku_window_present(Haiku_Window *win, const void *pixels, int w, int h, int pitch);

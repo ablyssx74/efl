@@ -502,6 +502,8 @@ _ecore_evas_haiku_move(Ecore_Evas *ee, int x, int y)
 {
    Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
 
+   /* like a window manager: a maximized or fullscreen window stays put */
+   if (ee->prop.maximized || ee->prop.fullscreen) return;
    if ((ee->x == x) && (ee->y == y)) return;
    ee->req.x = ee->x = x;
    ee->req.y = ee->y = y;
@@ -514,6 +516,9 @@ _ecore_evas_haiku_resize(Ecore_Evas *ee, int w, int h)
 {
    Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
 
+   /* like a window manager: a maximized or fullscreen window keeps the size
+    * of its state, the canvas follows the window */
+   if (ee->prop.maximized || ee->prop.fullscreen) return;
    if (w < 1) w = 1;
    if (h < 1) h = 1;
    if ((w == ee->w) && (h == ee->h)) return;
@@ -609,6 +614,104 @@ _ecore_evas_haiku_size_max_set(Ecore_Evas *ee, int w, int h)
    _ecore_evas_haiku_size_limits_apply(ee);
 }
 
+static void
+_ecore_evas_haiku_size_step_apply(Ecore_Evas *ee)
+{
+   Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
+
+   haiku_window_size_step_set(hd->win, ee->prop.base.w, ee->prop.base.h,
+                              ee->prop.step.w, ee->prop.step.h);
+}
+
+static void
+_ecore_evas_haiku_size_base_set(Ecore_Evas *ee, int w, int h)
+{
+   if (w < 0) w = 0;
+   if (h < 0) h = 0;
+   if ((ee->prop.base.w == w) && (ee->prop.base.h == h)) return;
+   ee->prop.base.w = w;
+   ee->prop.base.h = h;
+   _ecore_evas_haiku_size_step_apply(ee);
+}
+
+static void
+_ecore_evas_haiku_size_step_set(Ecore_Evas *ee, int w, int h)
+{
+   if (w < 0) w = 0;
+   if (h < 0) h = 0;
+   if ((ee->prop.step.w == w) && (ee->prop.step.h == h)) return;
+   ee->prop.step.w = w;
+   ee->prop.step.h = h;
+   _ecore_evas_haiku_size_step_apply(ee);
+}
+
+static void
+_ecore_evas_haiku_fullscreen_set(Ecore_Evas *ee, Eina_Bool on)
+{
+   Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
+
+   if (ee->prop.fullscreen == on) return;
+   ee->prop.fullscreen = on;
+   haiku_window_fullscreen_set(hd->win, on);
+   if (ee->func.fn_state_change) ee->func.fn_state_change(ee);
+}
+
+static void
+_ecore_evas_haiku_maximized_set(Ecore_Evas *ee, Eina_Bool on)
+{
+   Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
+
+   if (ee->prop.maximized == on) return;
+   ee->prop.maximized = on;
+   haiku_window_maximized_set(hd->win, on);
+   if (ee->func.fn_state_change) ee->func.fn_state_change(ee);
+}
+
+static void
+_ecore_evas_haiku_iconified_set(Ecore_Evas *ee, Eina_Bool on)
+{
+   Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
+
+   if (ee->prop.iconified == on) return;
+   ee->prop.iconified = on;
+   haiku_window_iconified_set(hd->win, on);
+   if (ee->func.fn_state_change) ee->func.fn_state_change(ee);
+}
+
+static void
+_ecore_evas_haiku_borderless_set(Ecore_Evas *ee, Eina_Bool on)
+{
+   Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
+
+   if (ee->prop.borderless == on) return;
+   ee->prop.borderless = on;
+   haiku_window_borderless_set(hd->win, on);
+   if (ee->func.fn_state_change) ee->func.fn_state_change(ee);
+}
+
+/* The canvas draws the pointer of the application (an object of the theme,
+ * like the text cursor of a terminal) itself, so the one of the system must
+ * not show on top of it. */
+static void
+_ecore_evas_haiku_object_cursor_set(Ecore_Evas *ee, Evas_Object *obj EINA_UNUSED, int layer EINA_UNUSED, int hot_x EINA_UNUSED, int hot_y EINA_UNUSED)
+{
+   haiku_window_cursor_visible_set(((Ecore_Evas_Haiku_Data *)(ee + 1))->win, 0);
+}
+
+static void
+_ecore_evas_haiku_object_cursor_unset(Ecore_Evas *ee)
+{
+   haiku_window_cursor_visible_set(((Ecore_Evas_Haiku_Data *)(ee + 1))->win, 1);
+}
+
+static void
+_ecore_evas_haiku_screen_geometry_get(const Ecore_Evas *ee, int *x, int *y, int *w, int *h)
+{
+   if (x) *x = 0;
+   if (y) *y = 0;
+   haiku_window_screen_size_get(((Ecore_Evas_Haiku_Data *)(ee + 1))->win, w, h);
+}
+
 static Ecore_Evas_Engine_Func _ecore_haiku_engine_func =
 {
    .fn_free = _ecore_evas_haiku_free,
@@ -623,6 +726,15 @@ static Ecore_Evas_Engine_Func _ecore_haiku_engine_func =
    .fn_title_set = _ecore_evas_haiku_title_set,
    .fn_size_min_set = _ecore_evas_haiku_size_min_set,
    .fn_size_max_set = _ecore_evas_haiku_size_max_set,
+   .fn_size_base_set = _ecore_evas_haiku_size_base_set,
+   .fn_size_step_set = _ecore_evas_haiku_size_step_set,
+   .fn_object_cursor_set = _ecore_evas_haiku_object_cursor_set,
+   .fn_object_cursor_unset = _ecore_evas_haiku_object_cursor_unset,
+   .fn_fullscreen_set = _ecore_evas_haiku_fullscreen_set,
+   .fn_maximized_set = _ecore_evas_haiku_maximized_set,
+   .fn_iconified_set = _ecore_evas_haiku_iconified_set,
+   .fn_borderless_set = _ecore_evas_haiku_borderless_set,
+   .fn_screen_geometry_get = _ecore_evas_haiku_screen_geometry_get,
    .fn_selection_claim = _ecore_evas_haiku_selection_claim,
    .fn_selection_has_owner = _ecore_evas_haiku_selection_has_owner,
    .fn_selection_request = _ecore_evas_haiku_selection_request,
