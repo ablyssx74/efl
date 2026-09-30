@@ -42,12 +42,14 @@ bsd = ['bsd', 'freebsd', 'dragonfly', 'netbsd', 'openbsd']
 linux = ['linux']
 osx = ['darwin']
 sun = ['sunos']
+haiku = ['haiku']
 
 sys_linux = linux.contains(host_machine.system())
 sys_bsd = bsd.contains(host_machine.system())
 sys_windows = windows.contains(host_machine.system())
 sys_osx = osx.contains(host_machine.system())
 sys_sun = sun.contains(host_machine.system())
+sys_haiku = haiku.contains(host_machine.system())
 
 module_files = []
 evas_loader_map = []
@@ -118,6 +120,12 @@ if sys_windows
   endif
   add_project_arguments('-D__USE_MINGW_ANSI_STDIO', language: langs)
   add_global_arguments('-define:WIN32', language: 'cs')
+endif
+
+if sys_haiku
+  # sockets (socket, connect, inet_pton, ...) live in libnetwork, and
+  # strsep() and friends in libbsd, not libroot
+  add_project_link_arguments('-lnetwork', '-lbsd', language: ['c', 'cpp'])
 endif
 
 if sys_sun
@@ -214,7 +222,7 @@ endif
 config_dir = [include_directories('.')]
 eolian_include_directories = []
 
-if sys_linux or sys_bsd or sys_sun
+if sys_linux or sys_bsd or sys_sun or sys_haiku
   sys_lib_extension = 'so'
   sys_exe_extension = ''
   sys_mod_extension = 'so'
@@ -231,7 +239,7 @@ else
   error('System ' + host_machine.system() + ' not known')
 endif
 
-if sys_linux or sys_bsd or sys_sun
+if sys_linux or sys_bsd or sys_sun or sys_haiku
   config_h.set('_STAT_VER_LINUX', '1')
 endif
 
