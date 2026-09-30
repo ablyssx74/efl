@@ -294,6 +294,16 @@ _ecore_evas_resize(Ecore_Evas *ee, int w, int h)
    ee->w = w;
    ee->h = h;
 
+   /* Also resize the native window, otherwise a window created with a
+    * placeholder size never grows to what the application asked for. */
+   {
+      Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+      int cw = 0, ch = 0;
+
+      SDL_GetWindowSize(swd->w, &cw, &ch);
+      if ((cw != w) || (ch != h)) SDL_SetWindowSize(swd->w, w, h);
+   }
+
    rmethod = evas_output_method_get(ee->evas);
    if (rmethod == evas_render_method_lookup("buffer"))
      {
@@ -519,7 +529,11 @@ _ecore_evas_internal_sdl_new(int rmethod, const char* name, int w, int h, int fu
    evas_output_method_set(ee->evas, rmethod);
 
    gl = !(rmethod == evas_render_method_lookup("buffer"));
-   ee->can_async_render = gl ? EINA_FALSE : EINA_TRUE;
+   /* The buffer flush ends up in SDL_UnlockTexture()/SDL_RenderPresent(),
+    * and SDL's renderer must only be driven from the thread that owns the
+    * window. Rendering asynchronously calls it from the evas render thread,
+    * which aborts on some platforms (e.g. Haiku's BGLView::UnlockGL()). */
+   ee->can_async_render = EINA_FALSE;
 
    swd->w = SDL_CreateWindow(name,
                              SDL_WINDOWPOS_UNDEFINED,
