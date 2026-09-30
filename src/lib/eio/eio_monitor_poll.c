@@ -36,6 +36,20 @@ struct _Eio_Monitor_Stat
    int version;
 };
 
+/* Reading a file updates its access time, and the users of a monitor read the
+ * files they are told about. Comparing atime would report a modification
+ * for every such read, and a config reload would then trigger the next one. */
+static Eina_Bool
+_eio_stat_modified(const Eina_Stat *before, const Eina_Stat *after)
+{
+   Eina_Stat a = *before;
+   Eina_Stat b = *after;
+
+   a.atime = b.atime = 0;
+   a.atimensec = b.atimensec = 0;
+   return memcmp(&a, &b, sizeof(Eina_Stat)) != 0;
+}
+
 struct _Eio_Monitor_Backend
 {
    Eio_Monitor *parent;
@@ -119,7 +133,7 @@ _eio_monitor_fallback_heavy_cb(void *data, Ecore_Thread *thread)
    est->ctimensec = 0;
 #endif
 
-   if (memcmp(est, &backend->self, sizeof (Eina_Stat)) != 0)
+   if (_eio_stat_modified(&backend->self, est))
      {
         int event = EIO_MONITOR_DIRECTORY_MODIFIED;
 
@@ -173,7 +187,7 @@ _eio_monitor_fallback_heavy_cb(void *data, Ecore_Thread *thread)
 
                   eina_hash_add(backend->children, info->path, cmp);
                }
-             else if (memcmp(cmp, &buffer, sizeof (Eina_Stat)) != 0)
+             else if (_eio_stat_modified(&cmp->buffer, &buffer.buffer))
                {
                   /* file has been modified */
                   ecore_thread_main_loop_begin();
