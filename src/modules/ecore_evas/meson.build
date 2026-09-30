@@ -7,6 +7,10 @@ engines = [
 ['x', ['x11']],
 ]
 
+if sys_haiku
+  engines += [['haiku', []]]
+endif
+
 if sys_windows == false
   engines += [['extn', []]]
 else

@@ -848,6 +848,19 @@ _ecore_evas_constructor_sdl(int x EINA_UNUSED, int y EINA_UNUSED, int w, int h, 
    return ee;
 }
 static Ecore_Evas *
+_ecore_evas_constructor_haiku(int x EINA_UNUSED, int y EINA_UNUSED, int w, int h, const char *extra_options)
+{
+   Ecore_Evas *ee;
+   char *name = NULL;
+
+   _ecore_evas_parse_extra_options_str(extra_options, "name=", &name);
+   ee = ecore_evas_haiku_new(name, w, h);
+   free(name);
+
+   return ee;
+}
+
+static Ecore_Evas *
 _ecore_evas_constructor_opengl_sdl(int x EINA_UNUSED, int y EINA_UNUSED, int w, int h, const char *extra_options)
 {
    Ecore_Evas *ee;
@@ -983,6 +996,7 @@ static const struct ecore_evas_engine _engines[] = {
   {"wayland_egl", _ecore_evas_constructor_wayland_egl},
   {"drm", _ecore_evas_constructor_drm},
   {"gl_drm", _ecore_evas_constructor_opengl_drm},
+  {"haiku", _ecore_evas_constructor_haiku},
   {"opengl_sdl", _ecore_evas_constructor_opengl_sdl},
   {"sdl", _ecore_evas_constructor_sdl},
   {"buffer", _ecore_evas_constructor_buffer},
@@ -4361,6 +4375,29 @@ ecore_evas_extn_plug_connect(Evas_Object *obj, const char *svcname, int svcnum, 
    EINA_SAFETY_ON_NULL_RETURN_VAL(iface, EINA_FALSE);
 
    return iface->connect(ee, svcname, svcnum, svcsys);
+}
+
+EAPI Ecore_Evas *
+ecore_evas_haiku_new(const char *name, int w, int h)
+{
+   Ecore_Evas *ee;
+   Ecore_Evas *(*new)(const char *, int, int);
+   Eina_Module *m = _ecore_evas_engine_load("haiku");
+
+   /* only built on Haiku: no complaint when it is not there */
+   if (!m) return NULL;
+
+   new = eina_module_symbol_get(m, "ecore_evas_haiku_new_internal");
+   EINA_SAFETY_ON_NULL_RETURN_VAL(new, NULL);
+
+   ee = new(name, w, h);
+   if (!ee) return NULL;
+   if (!_ecore_evas_cursors_init(ee))
+     {
+        ecore_evas_free(ee);
+        return NULL;
+     }
+   return ee;
 }
 
 EAPI Ecore_Evas *
