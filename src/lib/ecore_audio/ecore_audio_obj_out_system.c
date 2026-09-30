@@ -193,6 +193,13 @@ _backend_callbacks(Eo *obj, Ecore_Audio_Out_System_Data *pd, Eina_Bool add)
         fail = ECORE_AUDIO_OUT_SDL_EVENT_CONTEXT_FAIL;
      }
 #endif
+#ifdef HAVE_HAIKU_AUDIO
+   if (_backend_class_get == ecore_audio_out_haiku_class_get)
+     {
+        ready = ECORE_AUDIO_OUT_HAIKU_EVENT_CONTEXT_READY;
+        fail = ECORE_AUDIO_OUT_HAIKU_EVENT_CONTEXT_FAIL;
+     }
+#endif
 #endif
    if (!ready) return;
    if (add)
@@ -276,6 +283,10 @@ _probe_finish(void *data EINA_UNUSED)
    if (!_backend_class_get && _ecore_audio_out_sdl_probe())
      _backend_class_get = ecore_audio_out_sdl_class_get;
 #endif
+#ifdef HAVE_HAIKU_AUDIO
+   if (!_backend_class_get && _ecore_audio_out_haiku_probe())
+     _backend_class_get = ecore_audio_out_haiku_class_get;
+#endif
    /* A server may still be starting. Keep the outputs and their queued
     * requests waiting, and cache only a successful automatic selection.
     */
@@ -322,6 +333,10 @@ _backend_check(void)
 #ifdef HAVE_SDL_AUDIO
         if (!strcmp(backend, "sdl"))
           _backend_class_get = ecore_audio_out_sdl_class_get;
+#endif
+#ifdef HAVE_HAIKU_AUDIO
+        if (!strcmp(backend, "haiku"))
+          _backend_class_get = ecore_audio_out_haiku_class_get;
 #endif
         if (!_backend_class_get)
           ERR("Unknown or unavailable ECORE_AUDIO_BACKEND: %s", backend);
