@@ -193,7 +193,7 @@ ecore_sdl_feed_events(void)
              ev->timestamp = timestamp;
              ev->window = event.motion.windowID;
              ev->event_window = event.motion.windowID;
-             ev->modifiers = 0; /* FIXME: keep modifier around. */
+             ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
              ev->x = event.motion.x;
              ev->y = event.motion.y;
              ev->root.x = ev->x;
@@ -218,10 +218,14 @@ ecore_sdl_feed_events(void)
              ev->timestamp = timestamp;
              ev->window = event.button.windowID;
              ev->event_window = event.button.windowID;
-             ev->modifiers = 0; /* FIXME: keep modifier around. */
+             ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
              ev->buttons = event.button.button;
-             ev->double_click = 0;
-             ev->triple_click = 0;
+             ev->x = event.button.x;
+             ev->y = event.button.y;
+             ev->root.x = ev->x;
+             ev->root.y = ev->y;
+             ev->double_click = (event.button.clicks == 2);
+             ev->triple_click = (event.button.clicks >= 3);
 
              /* Must set multi touch device to 0 or it will get ignored */
              ev->multi.device = 0;
@@ -242,10 +246,15 @@ ecore_sdl_feed_events(void)
              ev->timestamp = timestamp;
              ev->window = event.wheel.windowID;
              ev->event_window = event.wheel.windowID;
-             ev->modifiers = 0; /* FIXME: keep modifier around. */
-             ev->direction = 0;
-             ev->z = event.wheel.x != 0 ? event.wheel.x : event.wheel.y;
-             ev->direction = event.wheel.x != 0 ? 0 : 1;
+             ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
+             SDL_GetMouseState(&ev->x, &ev->y);
+             /* SDL: y > 0 is away from the user (up), x > 0 is right.
+              * Ecore: direction 0 is vertical, 1 horizontal, z > 0 is
+              * down/right. */
+             ev->direction = (event.wheel.x != 0 && event.wheel.y == 0) ? 1 : 0;
+             ev->z = ev->direction ? event.wheel.x : -event.wheel.y;
+             if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
+               ev->z = -ev->z;
 
              ecore_event_add(ECORE_EVENT_MOUSE_WHEEL, ev, NULL, NULL);
              break;
@@ -259,10 +268,14 @@ ecore_sdl_feed_events(void)
              ev->timestamp = timestamp;
              ev->window = event.button.windowID;
              ev->event_window = event.button.windowID;
-             ev->modifiers = 0; /* FIXME: keep modifier around. */
+             ev->modifiers = _ecore_sdl_event_modifiers(SDL_GetModState());
              ev->buttons = event.button.button;
-             ev->double_click = 0;
-             ev->triple_click = 0;
+             ev->x = event.button.x;
+             ev->y = event.button.y;
+             ev->root.x = ev->x;
+             ev->root.y = ev->y;
+             ev->double_click = (event.button.clicks == 2);
+             ev->triple_click = (event.button.clicks >= 3);
 
              /* Must set multi touch device to 0 or it will get ignored */
              ev->multi.device = 0;
