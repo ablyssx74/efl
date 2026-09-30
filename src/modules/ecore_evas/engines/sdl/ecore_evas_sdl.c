@@ -519,7 +519,11 @@ _ecore_evas_internal_sdl_new(int rmethod, const char* name, int w, int h, int fu
    evas_output_method_set(ee->evas, rmethod);
 
    gl = !(rmethod == evas_render_method_lookup("buffer"));
-   ee->can_async_render = gl ? EINA_FALSE : EINA_TRUE;
+   /* Flushing a frame ends up in SDL_RenderPresent(), and SDL's renderer must
+    * only be driven from the thread that owns the window. Rendering
+    * asynchronously does that from the evas render thread, which aborts on
+    * some platforms (e.g. Haiku's BGLView::UnlockGL()). */
+   ee->can_async_render = EINA_FALSE;
 
    swd->w = SDL_CreateWindow(name,
                              SDL_WINDOWPOS_UNDEFINED,
