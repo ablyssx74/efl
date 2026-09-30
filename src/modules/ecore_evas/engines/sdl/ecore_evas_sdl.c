@@ -50,14 +50,21 @@
 typedef struct _Ecore_Evas_SDL_Switch_Data Ecore_Evas_SDL_Switch_Data;
 struct _Ecore_Evas_SDL_Switch_Data
 {
-   SDL_Texture *pages[2];
+   SDL_Texture *page;
    SDL_Renderer *r;
    SDL_Window *w;
 
-   unsigned char current;
+   /* Evas renders into this buffer, which outlives every frame: only the
+    * damaged part of a frame is redrawn, and the pixels of a locked SDL
+    * texture are not guaranteed to be preserved between two locks. */
+   void *pixels;
+   int pitch;
+
+   Ecore_Timer *redraw_timer;
 };
 
 static int                      _ecore_evas_init_count = 0;
+static Ecore_Job                *_sdl_clipboard_job = NULL;
 
 static Ecore_Event_Handler      *ecore_evas_event_handlers[4] = {
    NULL, NULL, NULL, NULL
@@ -78,20 +85,44 @@ static void *
 _ecore_evas_sdl_switch_buffer(void *data, void *dest EINA_UNUSED)
 {
    Ecore_Evas_SDL_Switch_Data *swd = data;
-   void *pixels;
-   int pitch;
 
-   /* Push current buffer to screen */
-   SDL_UnlockTexture(swd->pages[swd->current]);
-   SDL_RenderCopy(swd->r, swd->pages[swd->current], NULL, NULL);
+   SDL_UpdateTexture(swd->page, NULL, swd->pixels, swd->pitch);
+   SDL_RenderCopy(swd->r, swd->page, NULL, NULL);
    SDL_RenderPresent(swd->r);
 
-   /* Switch to next buffer for rendering */
-   swd->current = (swd->current + 1) % 2;
-   if (SDL_LockTexture(swd->pages[swd->current], NULL, &pixels, &pitch) < 0)
-     return NULL;
+   return swd->pixels;
+}
 
-   return pixels;
+/* (Re)create the texture and the pixel buffer for a w x h canvas and tell the
+ * buffer engine about them. */
+static Eina_Bool
+_ecore_evas_sdl_buffer_reset(Ecore_Evas *ee, int w, int h)
+{
+   Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+   Evas_Engine_Info_Buffer *einfo;
+
+   einfo = (Evas_Engine_Info_Buffer *) evas_engine_info_get(ee->evas);
+   if (!einfo) return EINA_FALSE;
+
+   if (swd->page) SDL_DestroyTexture(swd->page);
+   free(swd->pixels);
+
+   SDL_RenderClear(swd->r);
+   swd->pitch = w * 4;
+   swd->page = SDL_CreateTexture(swd->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+   swd->pixels = calloc(h, swd->pitch);
+   if (!swd->page || !swd->pixels) return EINA_FALSE;
+
+   einfo->info.depth_type = EVAS_ENGINE_BUFFER_DEPTH_RGB32;
+   einfo->info.switch_data = swd;
+   einfo->info.dest_buffer = swd->pixels;
+   einfo->info.dest_buffer_row_bytes = swd->pitch;
+   einfo->info.use_color_key = 0;
+   einfo->info.alpha_threshold = 0;
+   einfo->info.func.new_update_region = NULL;
+   einfo->info.func.free_update_region = NULL;
+   einfo->info.func.switch_buffer = _ecore_evas_sdl_switch_buffer;
+   return evas_engine_info_set(ee->evas, (Evas_Engine_Info *) einfo);
 }
 
 static Eina_Bool
@@ -122,58 +153,58 @@ _ecore_evas_sdl_event_lost_focus(void *data EINA_UNUSED, int type EINA_UNUSED, v
 }
 
 static Eina_Bool
+_ecore_evas_sdl_redraw_cb(void *data)
+{
+   Ecore_Evas *ee = data;
+   Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+
+   swd->redraw_timer = NULL;
+   evas_damage_rectangle_add(ee->evas, 0, 0, ee->w, ee->h);
+   return ECORE_CALLBACK_CANCEL;
+}
+
+/* Frames presented while the native window is still being created and sized
+ * can be dropped (seen on Haiku, where the window stays black until the next
+ * frame), so present the whole canvas once more shortly after. */
+static void
+_ecore_evas_sdl_redraw_later(Ecore_Evas *ee)
+{
+   Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+
+   if (swd->redraw_timer) ecore_timer_del(swd->redraw_timer);
+   if (_sdl_clipboard_job)
+     {
+        ecore_job_del(_sdl_clipboard_job);
+        _sdl_clipboard_job = NULL;
+     }
+   swd->redraw_timer = ecore_timer_add(0.25, _ecore_evas_sdl_redraw_cb, ee);
+}
+
+static Eina_Bool
 _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED, void *event)
 {
    Ecore_Sdl_Event_Video_Resize *e;
    Ecore_Evas *ee;
-   int rmethod;
 
    e = event;
    ee = _ecore_evas_sdl_match(e->windowID);
 
    if (!ee) return ECORE_CALLBACK_PASS_ON; /* pass on event */
 
-   /* already at that size (e.g. we resized the window ourselves) */
-   if ((ee->w == e->w) && (ee->h == e->h)) return ECORE_CALLBACK_PASS_ON;
-
-   rmethod = evas_output_method_get(ee->evas);
-   if (rmethod == evas_render_method_lookup("buffer"))
+   /* Already at that size, e.g. we resized the window ourselves: the frame
+    * presented before the window manager applied the size may have been
+    * lost, so just redraw. */
+   if ((ee->w == e->w) && (ee->h == e->h))
      {
-        Evas_Engine_Info_Buffer *einfo;
+        evas_damage_rectangle_add(ee->evas, 0, 0, e->w, e->h);
+        _ecore_evas_sdl_redraw_later(ee);
+        return ECORE_CALLBACK_PASS_ON;
+     }
 
-        einfo = (Evas_Engine_Info_Buffer *) evas_engine_info_get(ee->evas);
-        if (einfo)
-          {
-             Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
-             void *pixels;
-             int pitch;
-
-             SDL_UnlockTexture(swd->pages[swd->current]);
-
-             SDL_DestroyTexture(swd->pages[0]);
-             SDL_DestroyTexture(swd->pages[1]);
-
-             SDL_RenderClear(swd->r);
-
-             swd->pages[0] = SDL_CreateTexture(swd->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, e->w, e->h);
-             swd->pages[1] = SDL_CreateTexture(swd->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, e->w, e->h);
-
-             SDL_LockTexture(swd->pages[swd->current], NULL, &pixels, &pitch);
-
-             einfo->info.depth_type = EVAS_ENGINE_BUFFER_DEPTH_RGB32;
-             einfo->info.switch_data = swd;
-             einfo->info.dest_buffer = pixels;
-             einfo->info.dest_buffer_row_bytes = pitch;
-             einfo->info.use_color_key = 0;
-             einfo->info.alpha_threshold = 0;
-             einfo->info.func.new_update_region = NULL;
-             einfo->info.func.free_update_region = NULL;
-             einfo->info.func.switch_buffer = _ecore_evas_sdl_switch_buffer;
-             if (!evas_engine_info_set(ee->evas, (Evas_Engine_Info *) einfo))
-               {
-                  return EINA_FALSE;
-               }
-          }
+   if (evas_output_method_get(ee->evas) == evas_render_method_lookup("buffer"))
+     {
+        if (!_ecore_evas_sdl_buffer_reset(ee, e->w, e->h))
+          return EINA_FALSE;
      }
 
    ee->w = e->w;
@@ -184,6 +215,7 @@ _ecore_evas_sdl_event_video_resize(void *data EINA_UNUSED, int type EINA_UNUSED,
    evas_output_size_set(ee->evas, e->w, e->h);
    evas_output_viewport_set(ee->evas, 0, 0, e->w, e->h);
    evas_damage_rectangle_add(ee->evas, 0, 0, e->w, e->h);
+   _ecore_evas_sdl_redraw_later(ee);
 
    /* let the application (elm_win) know about the new size */
    if (ee->func.fn_resize) ee->func.fn_resize(ee);
@@ -272,13 +304,10 @@ _ecore_evas_sdl_free(Ecore_Evas *ee)
 
    ecore_event_window_unregister(SDL_GetWindowID(swd->w));
 
-   if (swd->pages[swd->current])
-     SDL_UnlockTexture(swd->pages[swd->current]);
-
-   if (swd->pages[0])
-     SDL_DestroyTexture(swd->pages[0]);
-   if (swd->pages[1])
-     SDL_DestroyTexture(swd->pages[1]);
+   if (swd->redraw_timer) ecore_timer_del(swd->redraw_timer);
+   if (swd->page)
+     SDL_DestroyTexture(swd->page);
+   free(swd->pixels);
    if (swd->r)
      SDL_DestroyRenderer(swd->r);
    if (swd->w)
@@ -294,7 +323,6 @@ _ecore_evas_sdl_free(Ecore_Evas *ee)
 static void
 _ecore_evas_resize(Ecore_Evas *ee, int w, int h)
 {
-   int rmethod;
 
    if ((w == ee->w) && (h == ee->h)) return;
    ee->req.w = w;
@@ -312,49 +340,16 @@ _ecore_evas_resize(Ecore_Evas *ee, int w, int h)
       if ((cw != w) || (ch != h)) SDL_SetWindowSize(swd->w, w, h);
    }
 
-   rmethod = evas_output_method_get(ee->evas);
-   if (rmethod == evas_render_method_lookup("buffer"))
+   if (evas_output_method_get(ee->evas) == evas_render_method_lookup("buffer"))
      {
-        Evas_Engine_Info_Buffer *einfo;
-
-        einfo = (Evas_Engine_Info_Buffer *) evas_engine_info_get(ee->evas);
-        if (einfo)
-          {
-             Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
-             void *pixels;
-             int pitch;
-
-             SDL_UnlockTexture(swd->pages[swd->current]);
-
-             SDL_DestroyTexture(swd->pages[0]);
-             SDL_DestroyTexture(swd->pages[1]);
-
-             SDL_RenderClear(swd->r);
-
-             swd->pages[0] = SDL_CreateTexture(swd->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
-             swd->pages[1] = SDL_CreateTexture(swd->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
-
-             SDL_LockTexture(swd->pages[swd->current], NULL, &pixels, &pitch);
-
-             einfo->info.depth_type = EVAS_ENGINE_BUFFER_DEPTH_RGB32;
-             einfo->info.switch_data = swd;
-             einfo->info.dest_buffer = pixels;
-             einfo->info.dest_buffer_row_bytes = pitch;
-             einfo->info.use_color_key = 0;
-             einfo->info.alpha_threshold = 0;
-             einfo->info.func.new_update_region = NULL;
-             einfo->info.func.free_update_region = NULL;
-             einfo->info.func.switch_buffer = _ecore_evas_sdl_switch_buffer;
-             if (!evas_engine_info_set(ee->evas, (Evas_Engine_Info *) einfo))
-               {
-                  return;
-               }
-          }
+        if (!_ecore_evas_sdl_buffer_reset(ee, w, h))
+          return;
      }
 
    evas_output_size_set(ee->evas, ee->w, ee->h);
    evas_output_viewport_set(ee->evas, 0, 0, ee->w, ee->h);
    evas_damage_rectangle_add(ee->evas, 0, 0, ee->w, ee->h);
+   _ecore_evas_sdl_redraw_later(ee);
 
    if (ee->func.fn_resize) ee->func.fn_resize(ee);
 }
@@ -396,6 +391,45 @@ _sdl_sel_is_text(const char *type)
                    !strcmp(type, "text/plain"));
 }
 
+/* Copy the clipboard content to the native clipboard. This cannot be done
+ * from inside the claim: ecore_evas only stores the content once the claim
+ * returned, so the delivery callback would find nothing. */
+static void
+_ecore_evas_sdl_clipboard_push(void *data)
+{
+   Ecore_Evas *ee = data;
+   Ecore_Evas_Selection_Callbacks *cbs =
+     &_sdl_sel_cbs[ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER];
+   const char *type = NULL;
+   Eina_Rw_Slice slice;
+   unsigned int i;
+
+   _sdl_clipboard_job = NULL;
+   if (!cbs->delivery || !cbs->available_types) return;
+
+   for (i = 0; !type && (i < eina_array_count_get(cbs->available_types)); i++)
+     {
+        const char *t = eina_array_data_get(cbs->available_types, i);
+
+        if (_sdl_sel_is_text(t)) type = t;
+     }
+   if (!type) return;
+
+   if (cbs->delivery(ee, _sdl_sel_seat,
+                     ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER,
+                     type, &slice) && slice.mem)
+     {
+        char *txt = strndup(slice.mem, slice.len);
+
+        if (txt)
+          {
+             SDL_SetClipboardText(txt);
+             free(txt);
+          }
+        free(slice.mem);
+     }
+}
+
 static Eina_Bool
 _ecore_evas_sdl_selection_claim(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection, Eina_Array *available_types, Ecore_Evas_Selection_Internal_Delivery delivery, Ecore_Evas_Selection_Internal_Cancel cancel)
 {
@@ -409,38 +443,10 @@ _ecore_evas_sdl_selection_claim(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Se
    cbs->available_types = available_types;
    _sdl_sel_seat = seat;
 
-   if ((selection == ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER) &&
-       delivery && available_types)
+   if ((selection == ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER) && delivery)
      {
-        const char *type = NULL;
-        unsigned int i;
-
-        for (i = 0; i < eina_array_count_get(available_types); i++)
-          {
-             const char *t = eina_array_data_get(available_types, i);
-
-             if (_sdl_sel_is_text(t))
-               {
-                  type = t;
-                  break;
-               }
-          }
-        if (type)
-          {
-             Eina_Rw_Slice slice;
-
-             if (delivery(ee, seat, selection, type, &slice) && slice.mem)
-               {
-                  char *txt = strndup(slice.mem, slice.len);
-
-                  if (txt)
-                    {
-                       SDL_SetClipboardText(txt);
-                       free(txt);
-                    }
-                  free(slice.mem);
-               }
-          }
+        if (_sdl_clipboard_job) ecore_job_del(_sdl_clipboard_job);
+        _sdl_clipboard_job = ecore_job_add(_ecore_evas_sdl_clipboard_push, ee);
      }
 
    if (ee->func.fn_selection_changed)
@@ -528,6 +534,17 @@ _ecore_evas_sdl_selection_request(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_
    return eina_future_resolved(efl_loop_future_scheduler_get(efl_main_loop_get()), value);
 }
 
+static void
+_ecore_evas_title_set(Ecore_Evas *ee, const char *title)
+{
+   Ecore_Evas_SDL_Switch_Data *swd = (Ecore_Evas_SDL_Switch_Data*)(ee + 1);
+
+   if (eina_streq(ee->prop.title, title)) return;
+   free(ee->prop.title);
+   ee->prop.title = eina_strdup(title);
+   SDL_SetWindowTitle(swd->w, title ? title : "");
+}
+
 static Ecore_Evas_Engine_Func _ecore_sdl_engine_func =
 {
    _ecore_evas_sdl_free,
@@ -556,7 +573,7 @@ static Ecore_Evas_Engine_Func _ecore_sdl_engine_func =
    NULL,
    NULL,
    NULL,
-   NULL,
+   _ecore_evas_title_set,
    NULL,
    NULL,
    NULL,
@@ -703,51 +720,16 @@ _ecore_evas_internal_sdl_new(int rmethod, const char* name, int w, int h, int fu
 
    if (!gl)
      {
-        Evas_Engine_Info_Buffer *einfo;
-
-        einfo = (Evas_Engine_Info_Buffer *) evas_engine_info_get(ee->evas);
-        if (einfo)
+        swd->r = SDL_CreateRenderer(swd->w, -1, 0);
+        if (!swd->r)
           {
-             void *pixels;
-             int pitch;
-
-             swd->r = SDL_CreateRenderer(swd->w, -1, 0);
-             if (!swd->r)
-               {
-                  ERR("SDL_CreateRenderer failed.");
-                  goto on_error;
-               }
-
-             swd->pages[0] = SDL_CreateTexture(swd->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
-             swd->pages[1] = SDL_CreateTexture(swd->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
-
-             einfo->info.depth_type = EVAS_ENGINE_BUFFER_DEPTH_RGB32;
-             einfo->info.switch_data = swd;
-
-             SDL_RenderClear(swd->r);
-             if (SDL_LockTexture(swd->pages[0], NULL, &pixels, &pitch) < 0)
-               {
-                  ERR("SDL_LockTexture failed.");
-                  goto on_error;
-               }
-
-             einfo->info.dest_buffer = pixels;
-             einfo->info.dest_buffer_row_bytes = pitch;
-             einfo->info.use_color_key = 0;
-             einfo->info.alpha_threshold = 0;
-             einfo->info.func.new_update_region = NULL;
-             einfo->info.func.free_update_region = NULL;
-             einfo->info.func.switch_buffer = _ecore_evas_sdl_switch_buffer;
-             if (!evas_engine_info_set(ee->evas, (Evas_Engine_Info *) einfo))
-               {
-                  ERR("evas_engine_info_set() for engine '%s' failed.", ee->driver);
-                  ecore_evas_free(ee);
-                  return NULL;
-               }
+             ERR("SDL_CreateRenderer failed.");
+             goto on_error;
           }
-        else
+
+        if (!_ecore_evas_sdl_buffer_reset(ee, w, h))
           {
-             ERR("evas_engine_info_set() init engine '%s' failed.", ee->driver);
+             ERR("evas_engine_info_set() for engine '%s' failed.", ee->driver);
              ecore_evas_free(ee);
              return NULL;
           }

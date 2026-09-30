@@ -367,6 +367,8 @@ ecore_sdl_feed_events(void)
                      break;
                   }
                 case SDL_WINDOWEVENT_EXPOSED:
+                case SDL_WINDOWEVENT_SHOWN:
+                case SDL_WINDOWEVENT_RESTORED:
                   {
                      Ecore_Sdl_Event_Window *ev;
 
