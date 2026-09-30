@@ -11,8 +11,8 @@ LICENSE="BSD (2-clause)
 	GNU LGPL v2.1
 	GNU GPL v2
 	Zlib"
-REVISION="3"
-SOURCE_URI="git+https://github.com/ablyssx74/efl.git#7f1a8438a324e2f86e83961c8bdac50bd0df436a"
+REVISION="4"
+SOURCE_URI="git+https://github.com/ablyssx74/efl.git#411e1aba218f430708810e7858e8bb0678446fc4"
 SOURCE_DIR="efl"
 
 ARCHITECTURES="all !x86_gcc2"
@@ -115,6 +115,7 @@ REQUIRES="
 	lib:libpng16
 	lib:libsdl2_2.0
 	lib:libssl
+	lib:libstdc++
 	lib:libtiff
 	lib:libwebp
 	lib:libwebpdemux
