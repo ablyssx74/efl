@@ -268,6 +268,10 @@ Eina_Bool ecore_audio_pipewire_lib_load(void);
 void      ecore_audio_pipewire_lib_unload(void);
 #endif
 
+#ifdef HAVE_SDL_AUDIO
+Eina_Bool _ecore_audio_out_sdl_probe(void);
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 #ifdef HAVE_SNDFILE
 /* ecore_audio_sndfile */

@@ -11,6 +11,7 @@ pub_eo_files = [
   'ecore_audio_out_sndfile.eo',
   'ecore_audio_out_pulse.eo',
   'ecore_audio_out_pipewire.eo',
+  'ecore_audio_out_sdl.eo',
   'ecore_audio_in_tone.eo',
   'ecore_audio_out_wasapi.eo'
 ]
@@ -42,6 +43,7 @@ ecore_audio_header_src = [
   'ecore_audio_protected.h',
   'ecore_audio_obj_out_pulse.h',
   'ecore_audio_obj_out_pipewire.h',
+  'ecore_audio_obj_out_sdl.h',
   'ecore_audio_obj_in_sndfile.h',
   'ecore_audio_obj_out_sndfile.h',
   'ecore_audio_obj_out_wasapi.h'
@@ -87,6 +89,12 @@ if get_option('pulseaudio')
   ])
 
   config_h.set('HAVE_PULSE', '1')
+endif
+
+if get_option('sdl')
+  ecore_audio_ext_deps += dependency('sdl2')
+  ecore_audio_src += files('ecore_audio_obj_out_sdl.c')
+  config_h.set('HAVE_SDL_AUDIO', '1')
 endif
 
 if sys_windows == true
