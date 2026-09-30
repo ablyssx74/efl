@@ -3,16 +3,16 @@ DESCRIPTION="EFL is a collection of libraries for building graphical application
 Evas (canvas), Edje (themes), Ecore (main loop and system integration), \
 Elementary (widgets), Emotion (media playback), Eina, Eet and more.
 
-This build uses the SDL engine for windowing, SDL audio for sound and \
-GStreamer for media playback."
+This build draws its windows with the Haiku application kit, plays sound \
+through the media kit and uses GStreamer for media playback."
 HOMEPAGE="https://www.enlightenment.org"
 COPYRIGHT="2002-2026 Enlightenment Project and contributors"
 LICENSE="BSD (2-clause)
 	GNU LGPL v2.1
 	GNU GPL v2
 	Zlib"
-REVISION="5"
-SOURCE_URI="git+https://github.com/ablyssx74/efl.git#d2c132a4a5404dd007c7b3b475b1de970aecdfb7"
+REVISION="6"
+SOURCE_URI="git+https://github.com/ablyssx74/efl.git#eeeb48f2a087494567a937816c8d758313b98b68"
 SOURCE_DIR="efl"
 
 ARCHITECTURES="all !x86_gcc2"
