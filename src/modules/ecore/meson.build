@@ -1,5 +1,7 @@
 
-if sys_windows == false and sys_osx == false
+# The systemd and upower modules talk to Linux system-bus services that do not
+# exist on Haiku.
+if sys_windows == false and sys_osx == false and sys_haiku == false
 
   system_modules = [
     'systemd',
