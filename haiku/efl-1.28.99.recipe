@@ -11,8 +11,8 @@ LICENSE="BSD (2-clause)
 	GNU LGPL v2.1
 	GNU GPL v2
 	Zlib"
-REVISION="6"
-SOURCE_URI="git+https://github.com/ablyssx74/efl.git#eeeb48f2a087494567a937816c8d758313b98b68"
+REVISION="7"
+SOURCE_URI="git+https://github.com/ablyssx74/efl.git#d28d6d98e8ced335b71536ed1d9c195be846513e"
 SOURCE_DIR="efl"
 
 ARCHITECTURES="all !x86_gcc2"
