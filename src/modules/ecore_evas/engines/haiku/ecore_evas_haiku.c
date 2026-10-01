@@ -54,6 +54,7 @@ struct _Ecore_Evas_Haiku_Data
 static int _ecore_evas_init_count = 0;
 static int _ecore_evas_haiku_count = 0;
 static Ecore_Job *_clipboard_job = NULL;
+static Ecore_Job *_selection_changed_job = NULL;
 
 static unsigned int
 _timestamp_get(void)
@@ -354,6 +355,39 @@ _clipboard_push(void *data)
      }
 }
 
+static Eina_Bool _selection_changed_pending[ECORE_EVAS_SELECTION_BUFFER_LAST];
+static unsigned int _selection_changed_seat[ECORE_EVAS_SELECTION_BUFFER_LAST];
+
+static void
+_selection_changed_job_cb(void *data)
+{
+   Ecore_Evas *ee = data;
+   Eina_Bool pending[ECORE_EVAS_SELECTION_BUFFER_LAST];
+   unsigned int seat[ECORE_EVAS_SELECTION_BUFFER_LAST];
+   int i;
+
+   _selection_changed_job = NULL;
+   memcpy(pending, _selection_changed_pending, sizeof(pending));
+   memcpy(seat, _selection_changed_seat, sizeof(seat));
+   memset(_selection_changed_pending, 0, sizeof(pending));
+
+   for (i = 0; i < ECORE_EVAS_SELECTION_BUFFER_LAST; i++)
+     if (pending[i] && ee->func.fn_selection_changed)
+       ee->func.fn_selection_changed(ee, seat[i], i);
+}
+
+/* The change is reported from the main loop, as the X11 and Wayland engines
+ * do. Reporting it from inside the claim lets a loss callback that clears
+ * the selection call back into itself until the stack is gone. */
+static void
+_selection_changed_later(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection)
+{
+   _selection_changed_pending[selection] = EINA_TRUE;
+   _selection_changed_seat[selection] = seat;
+   if (!_selection_changed_job)
+     _selection_changed_job = ecore_job_add(_selection_changed_job_cb, ee);
+}
+
 static Eina_Bool
 _ecore_evas_haiku_selection_claim(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection, Eina_Array *available_types, Ecore_Evas_Selection_Internal_Delivery delivery, Ecore_Evas_Selection_Internal_Cancel cancel)
 {
@@ -373,8 +407,7 @@ _ecore_evas_haiku_selection_claim(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_
         _clipboard_job = ecore_job_add(_clipboard_push, ee);
      }
 
-   if (ee->func.fn_selection_changed)
-     ee->func.fn_selection_changed(ee, seat, selection);
+   _selection_changed_later(ee, seat, selection);
    return EINA_TRUE;
 }
 
@@ -488,6 +521,12 @@ _ecore_evas_haiku_free(Ecore_Evas *ee)
      {
         ecore_job_del(_clipboard_job);
         _clipboard_job = NULL;
+     }
+   if (_selection_changed_job)
+     {
+        ecore_job_del(_selection_changed_job);
+        _selection_changed_job = NULL;
+        memset(_selection_changed_pending, 0, sizeof(_selection_changed_pending));
      }
    if (hd->fd_handler) ecore_main_fd_handler_del(hd->fd_handler);
    haiku_window_free(hd->win);
