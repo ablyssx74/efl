@@ -65,6 +65,9 @@ struct _Ecore_Evas_SDL_Switch_Data
 
 static int                      _ecore_evas_init_count = 0;
 static Ecore_Job                *_sdl_clipboard_job = NULL;
+static Ecore_Job                *_sdl_selection_changed_job = NULL;
+static Eina_Bool _sdl_selection_changed_pending[ECORE_EVAS_SELECTION_BUFFER_LAST];
+static unsigned int _sdl_selection_changed_seat[ECORE_EVAS_SELECTION_BUFFER_LAST];
 
 static Ecore_Event_Handler      *ecore_evas_event_handlers[4] = {
    NULL, NULL, NULL, NULL
@@ -305,6 +308,13 @@ _ecore_evas_sdl_free(Ecore_Evas *ee)
         ecore_job_del(_sdl_clipboard_job);
         _sdl_clipboard_job = NULL;
      }
+   if (_sdl_selection_changed_job)
+     {
+        ecore_job_del(_sdl_selection_changed_job);
+        _sdl_selection_changed_job = NULL;
+        memset(_sdl_selection_changed_pending, 0,
+               sizeof(_sdl_selection_changed_pending));
+     }
    if (swd->page)
      SDL_DestroyTexture(swd->page);
    free(swd->pixels);
@@ -429,6 +439,36 @@ _ecore_evas_sdl_clipboard_push(void *data)
      }
 }
 
+static void
+_sdl_selection_changed_job_cb(void *data)
+{
+   Ecore_Evas *ee = data;
+   Eina_Bool pending[ECORE_EVAS_SELECTION_BUFFER_LAST];
+   unsigned int seat[ECORE_EVAS_SELECTION_BUFFER_LAST];
+   int i;
+
+   _sdl_selection_changed_job = NULL;
+   memcpy(pending, _sdl_selection_changed_pending, sizeof(pending));
+   memcpy(seat, _sdl_selection_changed_seat, sizeof(seat));
+   memset(_sdl_selection_changed_pending, 0, sizeof(pending));
+
+   for (i = 0; i < ECORE_EVAS_SELECTION_BUFFER_LAST; i++)
+     if (pending[i] && ee->func.fn_selection_changed)
+       ee->func.fn_selection_changed(ee, seat[i], i);
+}
+
+/* The change is reported from the main loop, as the X11 and Wayland engines
+ * do. Reporting it from inside the claim lets a loss callback that clears
+ * the selection call back into itself until the stack is gone. */
+static void
+_sdl_selection_changed_later(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection)
+{
+   _sdl_selection_changed_pending[selection] = EINA_TRUE;
+   _sdl_selection_changed_seat[selection] = seat;
+   if (!_sdl_selection_changed_job)
+     _sdl_selection_changed_job = ecore_job_add(_sdl_selection_changed_job_cb, ee);
+}
+
 static Eina_Bool
 _ecore_evas_sdl_selection_claim(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection, Eina_Array *available_types, Ecore_Evas_Selection_Internal_Delivery delivery, Ecore_Evas_Selection_Internal_Cancel cancel)
 {
@@ -448,8 +488,7 @@ _ecore_evas_sdl_selection_claim(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Se
         _sdl_clipboard_job = ecore_job_add(_ecore_evas_sdl_clipboard_push, ee);
      }
 
-   if (ee->func.fn_selection_changed)
-     ee->func.fn_selection_changed(ee, seat, selection);
+   _sdl_selection_changed_later(ee, seat, selection);
 
    return EINA_TRUE;
 }
