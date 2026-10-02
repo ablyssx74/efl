@@ -1,6 +1,9 @@
 #ifdef HAVE_CONFIG_H
 # include "elementary_config.h"
 #endif
+#ifdef __HAIKU__
+# include <sys/stat.h>
+#endif
 #include <Elementary.h>
 
 typedef struct _Theme               Theme;
@@ -4142,6 +4145,23 @@ _cb_withdrawn(void *data EINA_UNUSED, Evas_Object *obj, void *info EINA_UNUSED)
      }
 }
 
+#ifdef __HAIKU__
+/* OpenGL is not used with the Nebula NVIDIA driver, which freezes windows,
+ * unless ELM_NEBULA is set. Same test as _haiku_sdl_allowed() in
+ * efl_ui_win.c of the library, which the programs cannot call. */
+# define _HAIKU_OPENGL_BLOCKED_TIP \
+   "The Nebula driver is installed: opt in with ELM_NEBULA (--nebula in Terminology)"
+
+static Eina_Bool
+_haiku_opengl_blocked(void)
+{
+   struct stat st;
+
+   return !getenv("ELM_NEBULA") &&
+     (stat("/boot/system/add-ons/opengl/egl_vendor.d/libEGL_mesa.so", &st) == 0);
+}
+#endif
+
 static void
 _status_config_rendering(Evas_Object *win,
                          Evas_Object *naviframe)
@@ -4188,8 +4208,11 @@ _status_config_rendering(Evas_Object *win,
 
    elm_list_go(li);
 #ifdef __HAIKU__
-   elm_object_disabled_set(li, EINA_TRUE);
-   elm_object_tooltip_text_set(li, "Software rendering only, for now");
+   if (_haiku_opengl_blocked())
+     {
+        elm_object_disabled_set(li, EINA_TRUE);
+        elm_object_tooltip_text_set(li, _HAIKU_OPENGL_BLOCKED_TIP);
+     }
 #endif
 
    CHECK_ADD("Override Preferred Acceleration",
@@ -4199,7 +4222,11 @@ _status_config_rendering(Evas_Object *win,
              _cb_accel_override, NULL);
    elm_check_state_set(ck, elm_config_accel_preference_override_get());
 #ifdef __HAIKU__
-   elm_object_disabled_set(ck, EINA_TRUE);
+   if (_haiku_opengl_blocked())
+     {
+        elm_object_disabled_set(ck, EINA_TRUE);
+        elm_object_tooltip_text_set(ck, _HAIKU_OPENGL_BLOCKED_TIP);
+     }
 #endif
 
    /////////////////////////////////////////////
