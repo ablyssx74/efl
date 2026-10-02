@@ -126,6 +126,53 @@ _post(Haiku_Window *win, const Haiku_Event &event)
    write(win->pipe_fds[1], &c, 1);
 }
 
+/* The keymap decides which key is Command, Control and Option: with the
+ * Linux layout of the Keymap preferences Command is on the key printed Ctrl
+ * and Control on the one printed Alt. EFL applications expect Ctrl and Alt
+ * where they are printed, so go by the key a modifier is assigned to. The
+ * codes are those of the keys of a PC keyboard. */
+static unsigned int
+_modifier_of_key(uint32 key, unsigned int fallback)
+{
+   switch (key)
+     {
+      case 0x5c: case 0x60: return HAIKU_MOD_CONTROL;
+      case 0x5d: case 0x5f: return HAIKU_MOD_ALT;
+      case 0x66: case 0x67: return HAIKU_MOD_SUPER;
+      default: return fallback;
+     }
+}
+
+/* what the keys of one side of a modifier stand for, for a second at most:
+ * the keymap can be changed while the application runs */
+static unsigned int
+_modifier_of_side(uint32 side, unsigned int fallback)
+{
+   static const uint32 sides[] = {
+      B_LEFT_COMMAND_KEY, B_RIGHT_COMMAND_KEY, B_LEFT_CONTROL_KEY,
+      B_RIGHT_CONTROL_KEY, B_LEFT_OPTION_KEY, B_RIGHT_OPTION_KEY
+   };
+   static unsigned int cache[sizeof(sides) / sizeof(sides[0])];
+   static bigtime_t stamp = 0;
+   unsigned int i;
+   bigtime_t now = system_time();
+
+   if ((now - stamp) > 1000000)
+     {
+        for (i = 0; i < sizeof(sides) / sizeof(sides[0]); i++)
+          {
+             uint32 key = 0;
+
+             cache[i] = (get_modifier_key(sides[i], &key) == B_OK) ?
+               _modifier_of_key(key, 0) : 0;
+          }
+        stamp = now;
+     }
+   for (i = 0; i < sizeof(sides) / sizeof(sides[0]); i++)
+     if ((sides[i] == side) && cache[i]) return cache[i];
+   return fallback;
+}
+
 static unsigned int
 _modifiers_get(void)
 {
@@ -133,9 +180,33 @@ _modifiers_get(void)
    unsigned int ret = 0;
 
    if (m & B_SHIFT_KEY) ret |= HAIKU_MOD_SHIFT;
-   if (m & B_CONTROL_KEY) ret |= HAIKU_MOD_CONTROL;
-   if (m & B_COMMAND_KEY) ret |= HAIKU_MOD_ALT;
-   if (m & B_OPTION_KEY) ret |= HAIKU_MOD_SUPER;
+   if (m & B_COMMAND_KEY)
+     {
+        if (m & B_LEFT_COMMAND_KEY)
+          ret |= _modifier_of_side(B_LEFT_COMMAND_KEY, HAIKU_MOD_ALT);
+        if (m & B_RIGHT_COMMAND_KEY)
+          ret |= _modifier_of_side(B_RIGHT_COMMAND_KEY, HAIKU_MOD_ALT);
+        if (!(m & (B_LEFT_COMMAND_KEY | B_RIGHT_COMMAND_KEY)))
+          ret |= HAIKU_MOD_ALT;
+     }
+   if (m & B_CONTROL_KEY)
+     {
+        if (m & B_LEFT_CONTROL_KEY)
+          ret |= _modifier_of_side(B_LEFT_CONTROL_KEY, HAIKU_MOD_CONTROL);
+        if (m & B_RIGHT_CONTROL_KEY)
+          ret |= _modifier_of_side(B_RIGHT_CONTROL_KEY, HAIKU_MOD_CONTROL);
+        if (!(m & (B_LEFT_CONTROL_KEY | B_RIGHT_CONTROL_KEY)))
+          ret |= HAIKU_MOD_CONTROL;
+     }
+   if (m & B_OPTION_KEY)
+     {
+        if (m & B_LEFT_OPTION_KEY)
+          ret |= _modifier_of_side(B_LEFT_OPTION_KEY, HAIKU_MOD_SUPER);
+        if (m & B_RIGHT_OPTION_KEY)
+          ret |= _modifier_of_side(B_RIGHT_OPTION_KEY, HAIKU_MOD_SUPER);
+        if (!(m & (B_LEFT_OPTION_KEY | B_RIGHT_OPTION_KEY)))
+          ret |= HAIKU_MOD_SUPER;
+     }
    if (m & B_CAPS_LOCK) ret |= HAIKU_MOD_CAPS;
    if (m & B_NUM_LOCK) ret |= HAIKU_MOD_NUM;
    if (m & B_SCROLL_LOCK) ret |= HAIKU_MOD_SCROLL;
@@ -389,10 +460,40 @@ private:
              ((raw_char >= B_HOME) && (raw_char <= B_DOWN_ARROW) &&
               (raw_char != B_ENTER) && (raw_char != B_BACKSPACE) &&
               (raw_char != B_TAB) && (raw_char != B_ESCAPE));
-           if ((first >= 0x20) && (first != 0x7f) && !named)
-             memcpy(e.text, bytes, count);
-           else if ((first < 0x20) && !named && (e.modifiers & HAIKU_MOD_CONTROL))
-             memcpy(e.text, bytes, count);
+           char text[sizeof(e.text)];
+           int len = 0;
+
+           if (!named)
+             {
+                if ((first < 0x20) && (modifiers() & B_CONTROL_KEY) &&
+                    (raw_char >= 0x20) && (raw_char < 0x7f))
+                  {
+                     /* the keymap has Control where Alt is printed: the
+                      * bytes are a control character, the key's own is
+                      * what is wanted */
+                     char c = (char)raw_char;
+
+                     if (isalpha((unsigned char)c) &&
+                         (((e.modifiers & HAIKU_MOD_SHIFT) != 0) !=
+                          ((e.modifiers & HAIKU_MOD_CAPS) != 0)))
+                       c = toupper((unsigned char)c);
+                     text[len++] = c;
+                  }
+                else if ((first >= 0x20) && (first != 0x7f))
+                  {
+                     memcpy(text, bytes, count);
+                     len = count;
+                  }
+             }
+           /* ctrl + key gives the control character, as on an X server */
+           if ((len == 1) && (e.modifiers & HAIKU_MOD_CONTROL))
+             {
+                unsigned char c = (unsigned char)text[0];
+
+                if (((c >= '@') && (c <= '_')) || ((c >= 'a') && (c <= 'z')))
+                  text[0] = c & 0x1f;
+             }
+           if (len > 0) memcpy(e.text, text, len);
         }
       _post(fWin, e);
    }
@@ -417,6 +518,26 @@ public:
       e.type = HAIKU_EVENT_CLOSE;
       _post(fWin, e);
       return false; /* the application decides */
+   }
+
+   /* BWindow keeps the key combinations with Command for its shortcuts and
+    * does not give them to the view. The keymap can put Command on the key
+    * printed Ctrl, and an application wants Ctrl+C like any other key. */
+   void DispatchMessage(BMessage *message, BHandler *handler)
+   {
+      int32 mods = 0;
+      const char *bytes = NULL;
+      BView *focus = CurrentFocus();
+
+      if ((message->what == B_KEY_DOWN) && focus &&
+          (message->FindInt32("modifiers", &mods) == B_OK) &&
+          (mods & B_COMMAND_KEY) &&
+          (message->FindString("bytes", &bytes) == B_OK))
+        {
+           focus->KeyDown(bytes, strlen(bytes));
+           return;
+        }
+      BWindow::DispatchMessage(message, handler);
    }
 
    void WindowActivated(bool active)

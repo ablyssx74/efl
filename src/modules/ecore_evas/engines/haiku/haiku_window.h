@@ -37,8 +37,8 @@ typedef enum
 /* keyboard modifiers and locks, as reported in Haiku_Event.modifiers */
 #define HAIKU_MOD_SHIFT   (1 << 0)
 #define HAIKU_MOD_CONTROL (1 << 1)
-#define HAIKU_MOD_ALT     (1 << 2) /* the physical Alt key, B_COMMAND_KEY */
-#define HAIKU_MOD_SUPER   (1 << 3) /* the logo key, B_OPTION_KEY */
+#define HAIKU_MOD_ALT     (1 << 2) /* the keys printed Alt */
+#define HAIKU_MOD_SUPER   (1 << 3) /* the logo keys */
 #define HAIKU_MOD_CAPS    (1 << 4)
 #define HAIKU_MOD_NUM     (1 << 5)
 #define HAIKU_MOD_SCROLL  (1 << 6)
