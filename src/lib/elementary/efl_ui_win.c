@@ -19,6 +19,9 @@
 #include <Elementary_Cursor.h>
 
 #include "elm_priv.h"
+#ifdef HAVE_ELEMENTARY_HAIKU
+# include <sys/stat.h>
+#endif
 #include "elm_widget_menu.h"
 #ifdef HAVE_ELEMENTARY_WL2
 # include "ecore_evas_wayland_private.h"
@@ -5025,6 +5028,54 @@ _elm_win_cb_show(void *data EINA_UNUSED,
    _elm_win_state_eval_queue(EINA_TRUE);
 }
 
+#ifdef HAVE_ELEMENTARY_HAIKU
+/* The SDL engines make SDL create an OpenGL context for every window. With
+ * the Nebula NVIDIA driver, which installs the Mesa EGL vendor library
+ * below, that freezes the window and killing the application can hang the
+ * system. They are used only when no such driver is installed, or when the
+ * user opted in with ELM_NEBULA (the --nebula option of Terminology). */
+static Eina_Bool
+_haiku_sdl_allowed(void)
+{
+   struct stat st;
+
+   return getenv("ELM_NEBULA") ||
+     (stat("/boot/system/add-ons/opengl/egl_vendor.d/libEGL_mesa.so", &st) != 0);
+}
+
+/* Takes the SDL engines out of the list when they are not allowed, and puts
+ * them before the native engine when OpenGL was asked for and they are. */
+static int
+_haiku_engines_arrange(const char **list, int count, Eina_Bool gl_accel)
+{
+   const char *sdl[32], *other[32];
+   static Eina_Bool told = EINA_FALSE;
+   Eina_Bool allowed = _haiku_sdl_allowed();
+   int i, n_sdl = 0, n_other = 0, n = 0;
+
+   /* an error: the request is not met, and warnings are not shown */
+   if (gl_accel && !allowed && !told)
+     {
+        ERR("The Nebula driver is installed: not using OpenGL. Opt in with "
+            "ELM_NEBULA (--nebula in Terminology).");
+        told = EINA_TRUE;
+     }
+
+   for (i = 0; i < count; i++)
+     {
+        Eina_Bool is_sdl = !strcmp(list[i], ELM_SOFTWARE_SDL) ||
+          !strcmp(list[i], ELM_OPENGL_SDL);
+
+        if (is_sdl && !allowed) continue;
+        if (is_sdl && gl_accel) sdl[n_sdl++] = list[i];
+        else other[n_other++] = list[i];
+     }
+   for (i = 0; i < n_sdl; i++) list[n++] = sdl[i];
+   for (i = 0; i < n_other; i++) list[n++] = other[i];
+   return n;
+}
+#endif
+
 static inline Eina_Bool
 _efl_ui_win_accel(Efl_Ui_Win_Data *sd, Eina_Stringshare **accel, int *gl_depth, int *gl_stencil, int *gl_msaa)
 {
@@ -5499,6 +5550,9 @@ _elm_win_finalize_internal(Eo *obj, Efl_Ui_Win_Data *sd, const char *name, Efl_U
 #endif
                }
           }
+#ifdef HAVE_ELEMENTARY_HAIKU
+        p = _haiku_engines_arrange(enginelist, p, is_gl_accel);
+#endif
         if (parent) parent_id = elm_win_window_id_get(parent);
         for (i = 0; i < p; i++)
           {
