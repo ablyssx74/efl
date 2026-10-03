@@ -18,6 +18,10 @@
 #define PUMP_INTERVAL 0.02
 #define QUEUE_SECONDS 0.15
 #define CHUNK_BYTES   4096
+/* Each stream is a BSoundPlayer with threads of its own and a round trip to
+ * the media server: a flood of sounds (a terminal ringing its bell for
+ * every control character of a binary file) must not open hundreds. */
+#define MAX_STREAMS   8
 
 typedef struct _Haiku_Stream
 {
@@ -145,6 +149,9 @@ _ecore_audio_out_haiku_ecore_audio_out_input_attach(Eo *eo_obj, Ecore_Audio_Out_
    int channels, rate;
 
    if (_is_input_attached(eo_obj, in)) return EINA_TRUE;
+   if ((eina_list_count(pd->streams) + eina_list_count(pd->draining)) >=
+       MAX_STREAMS)
+     return EINA_FALSE;
    if (!ecore_audio_obj_out_input_attach(efl_super(eo_obj, MY_CLASS), in))
      return EINA_FALSE;
 

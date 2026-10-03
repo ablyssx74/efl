@@ -3,6 +3,9 @@
 #include <SoundPlayer.h>
 #include <atomic>
 #include <string.h>
+#include <time.h>
+
+#define FAILED_PROBE_SECONDS 60
 
 struct _Haiku_Sound
 {
@@ -49,8 +52,16 @@ extern "C" int
 haiku_sound_probe(void)
 {
    media_raw_audio_format fmt = media_raw_audio_format::wildcard;
+   /* Opening a player takes the media server a while, and every sound
+    * asks: remember the answer, a negative one only for a short time as
+    * the server may be started later. */
+   static int usable = 0;
+   static time_t checked = 0;
    BSoundPlayer *player;
-   int usable;
+   time_t now = time(NULL);
+
+   if (checked && (usable || ((now - checked) < FAILED_PROBE_SECONDS)))
+     return usable;
 
    fmt.format = media_raw_audio_format::B_AUDIO_FLOAT;
    fmt.channel_count = 2;
@@ -59,6 +70,7 @@ haiku_sound_probe(void)
    player = new BSoundPlayer(&fmt, "probe");
    usable = (player->InitCheck() == B_OK);
    delete player;
+   checked = now;
    return usable;
 }
 
