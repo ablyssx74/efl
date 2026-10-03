@@ -15,6 +15,16 @@ never published.
   hang the system. The fault is in the driver, not in EFL. This is why OpenGL is
   off there by default.
 
+## Revision 11 (2026-10-03)
+
+Tag `haiku-1.28.99-11`, source `4a98f98018`.
+[Changes since revision 10](https://github.com/ablyssx74/efl/compare/haiku-1.28.99-10...haiku-1.28.99-11)
+
+* sound: a flood of sounds, like a terminal ringing its bell for every BEL of a
+  binary file, no longer slows the application to a crawl with hundreds of
+  threads. Whether audio works is asked of the media server once, not for each
+  sound, and at most eight sounds play at the same time.
+
 ## Revision 10 (2026-10-03)
 
 Tag `haiku-1.28.99-10`, source `1cb25f8d8b`.
