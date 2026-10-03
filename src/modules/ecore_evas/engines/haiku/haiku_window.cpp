@@ -10,8 +10,10 @@
 #include <Cursor.h>
 #include <File.h>
 #include <InterfaceDefs.h>
+#include <Entry.h>
 #include <Message.h>
 #include <OS.h>
+#include <Path.h>
 #include <Screen.h>
 #include <View.h>
 #include <Window.h>
@@ -25,6 +27,7 @@
 #include <unistd.h>
 
 #include <deque>
+#include <string>
 
 #include "haiku_window.h"
 
@@ -117,6 +120,9 @@ _post(Haiku_Window *win, const Haiku_Event &event)
    if ((event.type == HAIKU_EVENT_MOUSE_MOVE) && !win->queue.empty() &&
        (win->queue.back().type == HAIKU_EVENT_MOUSE_MOVE) &&
        (win->queue.back().buttons == event.buttons))
+     win->queue.back() = event;
+   else if ((event.type == HAIKU_EVENT_DND_MOVE) && !win->queue.empty() &&
+            (win->queue.back().type == HAIKU_EVENT_DND_MOVE))
      win->queue.back() = event;
    else
      win->queue.push_back(event);
@@ -211,6 +217,47 @@ _modifiers_get(void)
    if (m & B_NUM_LOCK) ret |= HAIKU_MOD_NUM;
    if (m & B_SCROLL_LOCK) ret |= HAIKU_MOD_SCROLL;
    return ret;
+}
+
+/* A drag that can be dropped on the window: files, or text. */
+static bool
+_drag_accepted(const BMessage *drag)
+{
+   return drag && (drag->HasRef("refs") || drag->HasData("text/plain", B_MIME_TYPE));
+}
+
+/* What was dropped as text: the paths of the files one per line, or the
+ * text itself. NULL if there is nothing the application can use. */
+static char *
+_dropped_text_get(const BMessage *message)
+{
+   std::string text;
+   entry_ref ref;
+   int32 i;
+
+   for (i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
+     {
+        BPath path(&ref);
+
+        if (path.InitCheck() != B_OK) continue;
+        if (!text.empty()) text += '\n';
+        text += path.Path();
+     }
+   if (text.empty())
+     {
+        const void *data;
+        ssize_t len;
+
+        if ((message->FindData("text/plain", B_MIME_TYPE, &data, &len) == B_OK) &&
+            (len > 0))
+          {
+             text.assign(static_cast<const char *>(data), len);
+             while (!text.empty() && (text[text.size() - 1] == '\0'))
+               text.erase(text.size() - 1);
+          }
+     }
+   if (text.empty()) return NULL;
+   return strdup(text.c_str());
 }
 
 /* Haiku numbers the buttons primary, secondary, tertiary; ecore left,
@@ -312,7 +359,7 @@ public:
    HaikuView(BRect frame, Haiku_Window *win)
      : BView(frame, "canvas", B_FOLLOW_ALL,
              B_WILL_DRAW | B_FRAME_EVENTS | B_FULL_UPDATE_ON_RESIZE),
-       fWin(win), fButtons(0)
+       fWin(win), fButtons(0), fDragging(false)
    {
       SetViewColor(B_TRANSPARENT_COLOR);
       SetLowColor(32, 32, 32);
@@ -393,7 +440,7 @@ public:
       _post(fWin, e);
    }
 
-   void MouseMoved(BPoint where, uint32 transit, const BMessage *)
+   void MouseMoved(BPoint where, uint32 transit, const BMessage *drag)
    {
       Haiku_Event e;
       memset(&e, 0, sizeof(e));
@@ -401,6 +448,29 @@ public:
       e.y = (int)where.y;
       e.buttons = fButtons;
       e.modifiers = _modifiers_get();
+      if (_drag_accepted(drag))
+        {
+           /* something is being dragged over the window */
+           if (transit == B_EXITED_VIEW)
+             {
+                if (fDragging) e.type = HAIKU_EVENT_DND_LEAVE;
+                else return;
+                fDragging = false;
+                _post(fWin, e);
+                return;
+             }
+           if (!fDragging)
+             {
+                Haiku_Event enter = e;
+
+                enter.type = HAIKU_EVENT_DND_ENTER;
+                fDragging = true;
+                _post(fWin, enter);
+             }
+           e.type = HAIKU_EVENT_DND_MOVE;
+           _post(fWin, e);
+           return;
+        }
       if (transit == B_ENTERED_VIEW) e.type = HAIKU_EVENT_MOUSE_IN;
       else if (transit == B_EXITED_VIEW) e.type = HAIKU_EVENT_MOUSE_OUT;
       else e.type = HAIKU_EVENT_MOUSE_MOVE;
@@ -427,6 +497,27 @@ public:
            e.modifiers = _modifiers_get();
            _post(fWin, e);
            return;
+        }
+      if (message->WasDropped())
+        {
+           char *text = _dropped_text_get(message);
+
+           if (text)
+             {
+                BPoint offset, where = message->DropPoint(&offset);
+                Haiku_Event e;
+
+                ConvertFromScreen(&where);
+                memset(&e, 0, sizeof(e));
+                e.type = HAIKU_EVENT_DND_DROP;
+                e.x = (int)where.x;
+                e.y = (int)where.y;
+                e.modifiers = _modifiers_get();
+                e.data = text;
+                fDragging = false;
+                _post(fWin, e);
+                return;
+             }
         }
       BView::MessageReceived(message);
    }
@@ -500,6 +591,7 @@ private:
 
    Haiku_Window *fWin;
    unsigned int fButtons;
+   bool fDragging;
 };
 
 class HaikuWindow : public BWindow
@@ -601,6 +693,7 @@ haiku_window_free(Haiku_Window *win)
 {
    if (!win) return;
    if (win->window->Lock()) win->window->Quit(); /* deletes the window */
+   for (size_t i = 0; i < win->queue.size(); i++) free(win->queue[i].data);
    close(win->pipe_fds[0]);
    close(win->pipe_fds[1]);
    delete_sem(win->queue_lock);

@@ -49,7 +49,12 @@ struct _Ecore_Evas_Haiku_Data
    void *pixels;
    int pitch;
    int w, h;
+
+   /* what was dropped on the window, as text, until the next drop */
+   char *dnd_text;
 };
+
+#define DND_SEAT 1
 
 static int _ecore_evas_init_count = 0;
 static int _ecore_evas_haiku_count = 0;
@@ -255,6 +260,39 @@ _key_send(Ecore_Evas *ee, const Haiku_Event *he, Eina_Bool down)
    ecore_event_add(down ? ECORE_EVENT_KEY_DOWN : ECORE_EVENT_KEY_UP, ev, NULL, NULL);
 }
 
+/* Files and text dragged over the window offer their text, which for files
+ * is their paths, one per line. */
+static void
+_dnd_enter(Ecore_Evas *ee, const Haiku_Event *he)
+{
+   static const char *type = "text/plain;charset=utf-8";
+   Eina_Array *types = eina_array_new(1);
+
+   eina_array_push(types, type);
+   ecore_evas_dnd_enter(ee, DND_SEAT, eina_array_iterator_new(types),
+                        EINA_POSITION2D(he->x, he->y));
+   eina_array_free(types);
+}
+
+static void
+_dnd_drop(Ecore_Evas *ee, Haiku_Event *he)
+{
+   Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
+   Eina_Position2D pos = EINA_POSITION2D(he->x, he->y);
+
+   free(hd->dnd_text);
+   hd->dnd_text = he->data;
+   he->data = NULL;
+
+   /* the drop can come without the pointer having been seen entering */
+   if (!ee->active_drags) _dnd_enter(ee, he);
+   ecore_evas_dnd_position_set(ee, DND_SEAT, pos);
+   if (ee->func.fn_dnd_drop)
+     ee->func.fn_dnd_drop(ee, DND_SEAT, ecore_evas_dnd_pos_get(ee, DND_SEAT),
+                          "copy");
+   ecore_evas_dnd_leave(ee, DND_SEAT, pos);
+}
+
 static Eina_Bool
 _ecore_evas_haiku_events(void *data, Ecore_Fd_Handler *fd_handler EINA_UNUSED)
 {
@@ -292,6 +330,18 @@ _ecore_evas_haiku_events(void *data, Ecore_Fd_Handler *fd_handler EINA_UNUSED)
            case HAIKU_EVENT_KEY_UP: _key_send(ee, &he, EINA_FALSE); break;
            case HAIKU_EVENT_FOCUS:
              _ecore_evas_focus_device_set(ee, NULL, he.flag ? EINA_TRUE : EINA_FALSE);
+             break;
+           case HAIKU_EVENT_DND_ENTER:
+             _dnd_enter(ee, &he);
+             break;
+           case HAIKU_EVENT_DND_MOVE:
+             ecore_evas_dnd_position_set(ee, DND_SEAT, EINA_POSITION2D(he.x, he.y));
+             break;
+           case HAIKU_EVENT_DND_LEAVE:
+             ecore_evas_dnd_leave(ee, DND_SEAT, EINA_POSITION2D(he.x, he.y));
+             break;
+           case HAIKU_EVENT_DND_DROP:
+             _dnd_drop(ee, &he);
              break;
            case HAIKU_EVENT_CLOSE:
              if (ee->func.fn_delete_request) ee->func.fn_delete_request(ee);
@@ -423,12 +473,31 @@ static Eina_Future *
 _ecore_evas_haiku_selection_request(Ecore_Evas *ee, unsigned int seat, Ecore_Evas_Selection_Buffer selection, Eina_Array *acceptable_types)
 {
    Ecore_Evas_Selection_Callbacks *cbs = &_sel_cbs[selection];
+   Ecore_Evas_Haiku_Data *hd = (Ecore_Evas_Haiku_Data *)(ee + 1);
    Eina_Content *content = NULL;
    const char *type = NULL;
    Eina_Value value;
    unsigned int i, j;
 
-   if (selection == ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER)
+   if (selection == ECORE_EVAS_SELECTION_BUFFER_DRAG_AND_DROP_BUFFER)
+     {
+        for (i = 0; !type && hd->dnd_text &&
+               (i < eina_array_count_get(acceptable_types)); i++)
+          {
+             const char *t = eina_array_data_get(acceptable_types, i);
+
+             if (_sel_is_text(t)) type = t;
+          }
+        if (type)
+          {
+             /* the slice includes the terminating NUL of the text */
+             Eina_Slice slice = { .len = strlen(hd->dnd_text) + 1,
+                                  .mem = hd->dnd_text };
+
+             content = eina_content_new(slice, type);
+          }
+     }
+   else if (selection == ECORE_EVAS_SELECTION_BUFFER_COPY_AND_PASTE_BUFFER)
      {
         for (i = 0; !type && (i < eina_array_count_get(acceptable_types)); i++)
           {
@@ -522,6 +591,7 @@ _ecore_evas_haiku_free(Ecore_Evas *ee)
         ecore_job_del(_clipboard_job);
         _clipboard_job = NULL;
      }
+   free(hd->dnd_text);
    if (_selection_changed_job)
      {
         ecore_job_del(_selection_changed_job);

@@ -31,6 +31,10 @@ typedef enum
    HAIKU_EVENT_KEY_DOWN,
    HAIKU_EVENT_KEY_UP,
    HAIKU_EVENT_FOCUS,
+   HAIKU_EVENT_DND_ENTER,
+   HAIKU_EVENT_DND_MOVE,
+   HAIKU_EVENT_DND_LEAVE,
+   HAIKU_EVENT_DND_DROP,
    HAIKU_EVENT_CLOSE
 } Haiku_Event_Type;
 
@@ -61,6 +65,7 @@ typedef struct
    int repeat;            /* the key down is an auto repeat */
    float dx, dy;          /* wheel, positive is down and right */
    int flag;              /* focus gained (1) or lost (0) */
+   char *data;            /* drop: the text, UTF-8, which the receiver frees */
 } Haiku_Event;
 
 /* The window is created hidden, w and h are the size of its content. */
